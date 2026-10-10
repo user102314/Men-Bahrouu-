@@ -26,13 +26,21 @@ Every error is `{ error: { code, message, details? }, requestId }`. Stable codes
 
 A client-generated order id is idempotent for the same server. Another server using that id receives `ORDER_ID_CONFLICT`. Prices are copied from the catalog when the line is added. Sending, printing, recipe consumption, audit, and the outbox row share one transaction; realtime events fire after commit. A product without a recipe does not move stock. A shortage does not block the send and may leave a negative quantity. At most one `DRAFT`, `SENT`, or `SERVED` order may reference a table. An unsent line is voided in place rather than deleted. A cashier approves a cancellation only with an admin password, and the audit row stores both identities. An approved void does not restock unless `restockOnVoid` is true.
 
-Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's server plus cashier and admin. Table events go to every role. Print, catalogue, and shift events go to cashier and admin. `stock.low` and `settings.updated` go to admin only.
+Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's server plus cashier and admin. Table events go to every role. Print, catalogue, and shift events go to cashier and admin. `stock.low` and `settings.updated` go to admin only. The floor client refetches tables on `table.updated` so a waiter does not learn another server's order id from the broadcast. `order.paid` from the till carries the order id; the client refetches the order.
 
 ## Admin services
 
 Catalogue, stock, purchasing, staff, attendance, cash shifts, expenses, and reports are HTTP routes in `interfaces/http/admin.ts`. They call `createAdminStore`. Each mutation writes `audit_log` and `sync_outbox` in the same transaction. Queries filter on `site_id`. Settings are cached in memory and dropped on `PUT /settings`. Reports are defined in `docs/REPORTS.md`. Stock math is defined in `docs/STOCK.md`. The route list is `docs/ADMIN-API.md`.
 
 `payments` stores one full payment per order and an optional `shift_id`. There is no partial payment. A cash shift's expected drawer is opening float + cash payments on that shift + pay-ins − pay-outs.
+
+## Floor web
+
+`apps/web` is a Vite + React page for the waiter, the cashier, and a placeholder admin screen. It imports `@resto/shared` and checks hub JSON with Zod. The device token stays in `localStorage`. The access token stays in `sessionStorage` and is dropped when it expires. Strings go through i18next (French, with Arabic and `dir=rtl`). The hub URL is `VITE_HUB_URL` or `http://<page hostname>:3000`. In development the hub allows `localhost`, `127.0.0.1`, `192.168.*`, and `10.*` pages; production keeps the explicit `CORS_ORIGINS` list. `pnpm dev:info` prints local URLs and device names, never tokens. Tokens are written to gitignored `.devices.dev.json` and `.dev-device-tokens.json`.
+
+New runtime libraries, each for one job: React and React Router for the screens, TanStack Query for server data, socket.io-client for live updates, i18next for the two languages, Tailwind for the theme, Radix dialog plus `clsx` / `tailwind-merge` / `cva` for the modal and buttons, lucide for icons, framer-motion for a short entrance of a new cashier card, Zod to validate responses. No service worker.
+
+A page served at `http://<PC IP>` is not a secure context, so a service worker and a full install prompt are unavailable. `http://localhost` on the PC is a secure context. Local HTTPS comes later.
 
 ## Printing
 
@@ -42,7 +50,8 @@ Preparation tickets are ESC/POS text in code page PC858. The degree sign uses by
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.
 - Render Arabic ticket lines as images; the text renderer prints French only.
-- Admin screens on top of the admin API, then the waiter and cashier PWA.
+- Admin screens on top of the admin API.
+- Local HTTPS, then a real installable PWA. The current floor UI is a normal page.
 - Partial void of one unit on a line of several.
 
 ## Database
