@@ -6,7 +6,7 @@ Interface languages: French and Arabic (RTL). Timezone: `Africa/Tunis`. Currency
 
 ## Cross-cutting rules
 
-1. Money is always integer millimes. 1 TND = 1000 millimes. Never use floating-point amounts. Format with `packages/shared/src/money.ts` (`12,500 TND`).
+1. Money is always integer millimes. 1 TND = 1000 millimes. Never use floating-point amounts. Format with `packages/shared/src/money.ts` (`12,500 TND`, or `12,500 د.ت` in Arabic, latin digits). `tndToMillimes` treats a single `,` or `.` as the decimal separator, so `"12,500"` and `"12.5"` are both 12.5 TND.
 2. Identifiers are UUIDs (v7 when possible). Order ids are generated on the client so sends are idempotent. Sending the same `orderId` twice must not create a duplicate.
 3. Store timestamps as `timestamptz` in UTC. Display them in `Africa/Tunis`.
 4. Authorize every request on the server. Hiding a button is not enough. Each route declares the required permission.
@@ -42,7 +42,7 @@ The hub is the source of truth. Devices use HTTPS and Socket.IO. The service mus
 | `order.reprint`                                                                      | no     | yes                         | yes   |
 | `catalog.edit`, `stock.*`, `staff.*`, `device.manage`, `audit.view`, `settings.edit` | no     | no                          | yes   |
 
-Cashier override: the cashier submits an admin PIN or password. Audit the action with both identities.
+Cashier override: `can('CASHIER', 'cancellation.approve')` and `can('CASHIER', 'order.discount')` are false. `requiresAdminOverride` is true for those two. The cashier submits an admin PIN or password. Audit the action with both identities. `order.discount` is the discount permission.
 
 ## Scope of this foundation
 
