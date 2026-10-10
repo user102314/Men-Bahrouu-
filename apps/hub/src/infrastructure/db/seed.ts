@@ -9,6 +9,7 @@ import { DEFAULT_VAT_RATE_BP } from "../../config/vat.js";
 import { hashSecret } from "../auth/argon2-hasher.js";
 import { openDatabase } from "./connection.js";
 import { assertNotProduction } from "./dev-only.js";
+import { seedAdminDemo } from "./seed-admin-demo.js";
 import { SEED_IDS, tableId } from "./seed-ids.js";
 import {
   categories,
@@ -400,6 +401,8 @@ writeFileSync(
 console.log(`Jetons de développement enregistrés dans ${devicesFile} (fichier ignoré par Git).`);
 console.log("Ces jetons d'appareils ne seront plus affichés.");
 console.log("");
+
+await seedAdminDemo(sql, siteId);
 
 await sql.end();
 

@@ -29,6 +29,7 @@ import {
 } from "../../domain/ordering/rules.js";
 import { activeTotal } from "../../domain/ordering/totals.js";
 import { routeByStation } from "../../domain/printing/print-router.js";
+import { consumeRecipes, restockOnVoidEnabled } from "./stock-effects.js";
 import { allocateDailyNumber } from "./order-counter.js";
 
 type Tx = postgres.TransactionSql<Record<string, never>>;
@@ -81,6 +82,21 @@ export type RealtimeMessage =
         };
         order: PublicOrder;
       };
+    }
+  | {
+      name: "stock.low";
+      serverId: string;
+      payload: {
+        stockItemId: string;
+        code: string;
+        quantityBase: number;
+        minThresholdBase: number;
+      };
+    }
+  | {
+      name: "order.paid";
+      serverId: string;
+      payload: { version: number; order: PublicOrder };
     };
 
 interface Header {
@@ -275,7 +291,12 @@ async function insertOrder(
       throw new DomainError("NOT_FOUND");
     }
   }
-  const date = businessDate(now, options.cutoffHour);
+  const cutoffRows = await tx<{ value: number }[]>`
+    select value from settings where site_id = ${options.siteId} and key = 'businessDayCutoffHour'
+  `;
+  const cutoff =
+    typeof cutoffRows[0]?.value === "number" ? cutoffRows[0].value : options.cutoffHour;
+  const date = businessDate(now, cutoff);
   const dailyNumber = await allocateDailyNumber(
     tx as unknown as postgres.Sql,
     options.siteId,
@@ -400,6 +421,17 @@ async function sendWithin(
     events.push(await occupyTable(tx, siteId, actor, header.tableId, order));
   }
   await createTickets(tx, siteId, actor, order, unsent, ticketType, sentAt);
+  const alerts = await consumeRecipes(
+    tx,
+    siteId,
+    actor,
+    unsent.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+    "order",
+    order.id,
+    "SALE",
+    -1,
+  );
+  events.push(...alerts);
   await track(tx, siteId, actor, "order.sent", "order", order.id, { status: header.status }, order);
   return { order, events, created: false };
 }
@@ -570,6 +602,18 @@ async function decideCancellation(
     `;
   }
   const sentTargets = targets.filter((item) => item.sentAt !== null);
+  if (sentTargets.length > 0 && (await restockOnVoidEnabled(tx, siteId))) {
+    await consumeRecipes(
+      tx,
+      siteId,
+      actor,
+      sentTargets.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      "cancellation",
+      request.id,
+      "CORRECTION",
+      1,
+    );
+  }
   await createTickets(
     tx,
     siteId,

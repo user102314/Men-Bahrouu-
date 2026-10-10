@@ -93,6 +93,7 @@ export const REALTIME_EVENTS = [
   "order.created",
   "order.updated",
   "order.sent",
+  "order.paid",
   "cancellation.requested",
   "cancellation.decided",
   "table.updated",

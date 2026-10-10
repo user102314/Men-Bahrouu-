@@ -43,6 +43,13 @@
       "when": 1791647860000,
       "tag": "0005_stock_movements_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791648224781,
+      "tag": "0006_deep_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,7 @@ import { z, ZodError } from "zod";
 
 import type { AuthService } from "../../application/auth-service.js";
 import type { Clock } from "../../domain/auth/clock.js";
-import { DomainError, type DomainCode } from "../../domain/ordering/errors.js";
+import { DomainError, domainHttp, type DomainCode } from "../../domain/ordering/errors.js";
 import type { OrderingStore, RealtimeMessage } from "../../infrastructure/db/ordering-store.js";
 import type { RealtimeHub } from "../realtime/hub.js";
 import { AppError } from "./errors.js";
@@ -235,17 +235,7 @@ async function run<T>(work: () => Promise<T>): Promise<T> {
 }
 
 function toAppError(code: DomainCode): AppError {
-  const mapped: Record<DomainCode, { status: number; message: string }> = {
-    NOT_FOUND: { status: 404, message: "Not found" },
-    FORBIDDEN: { status: 403, message: "Forbidden" },
-    ORDER_ID_CONFLICT: { status: 409, message: "Order id already used" },
-    TABLE_BUSY: { status: 409, message: "Table already has an open order" },
-    INVALID_TRANSITION: { status: 409, message: "Invalid status transition" },
-    LINE_ALREADY_SENT: { status: 409, message: "Sent line cannot be changed" },
-    CANCELLATION_EXISTS: { status: 409, message: "A pending cancellation already exists" },
-    PRODUCT_UNAVAILABLE: { status: 422, message: "Product unavailable" },
-  };
-  const entry = mapped[code];
+  const entry = domainHttp(code);
   return new AppError(entry.status, code, entry.message);
 }
 

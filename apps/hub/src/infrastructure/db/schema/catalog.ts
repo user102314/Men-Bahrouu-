@@ -72,6 +72,7 @@ export const products = pgTable(
     priceMillimes: integer("price_millimes").notNull(),
     vatRateBp: integer("vat_rate_bp").notNull(),
     isAvailable: boolean("is_available").notNull().default(true),
+    isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     ...timestampColumns(),
   },

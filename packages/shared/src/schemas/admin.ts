@@ -35,7 +35,9 @@ export const createProductSchema = z.strictObject({
   vatRateBp: z.number().int().min(0).max(10_000).optional(),
   confirmHighPrice: z.boolean().optional(),
 });
-export const updateProductSchema = createProductSchema.omit({ id: true }).partial();
+export const updateProductSchema = createProductSchema.omit({ id: true }).partial().extend({
+  isActive: z.boolean().optional(),
+});
 export const availabilitySchema = z.strictObject({ isAvailable: z.boolean() });
 
 export const createTableSchema = z.strictObject({

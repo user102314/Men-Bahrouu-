@@ -68,8 +68,12 @@ export function attachRealtime(
             .emit(message.name, message.payload);
           continue;
         }
-        if (message.name.startsWith("print.")) {
+        if (message.name.startsWith("print.") || message.name === "catalog.updated" || message.name.startsWith("shift.")) {
           io.to("role:CASHIER").to("role:ADMIN").emit(message.name, message.payload);
+          continue;
+        }
+        if (message.name === "stock.low" || message.name === "settings.updated") {
+          io.to("role:ADMIN").emit(message.name, message.payload);
           continue;
         }
         io.to(`user:${message.serverId}`)

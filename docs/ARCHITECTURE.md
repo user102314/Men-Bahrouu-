@@ -24,9 +24,15 @@ Every error is `{ error: { code, message, details? }, requestId }`. Stable codes
 
 ## Orders
 
-A client-generated order id is idempotent for the same server. Another server using that id receives `ORDER_ID_CONFLICT`. Prices are copied from the catalog when the line is added. Sending, printing, audit, and the outbox row share one transaction; realtime events fire after commit. At most one `DRAFT`, `SENT`, or `SERVED` order may reference a table. An unsent line is voided in place rather than deleted. A cashier approves a cancellation only with an admin password, and the audit row stores both identities.
+A client-generated order id is idempotent for the same server. Another server using that id receives `ORDER_ID_CONFLICT`. Prices are copied from the catalog when the line is added. Sending, printing, recipe consumption, audit, and the outbox row share one transaction; realtime events fire after commit. A product without a recipe does not move stock. A shortage does not block the send and may leave a negative quantity. At most one `DRAFT`, `SENT`, or `SERVED` order may reference a table. An unsent line is voided in place rather than deleted. A cashier approves a cancellation only with an admin password, and the audit row stores both identities. An approved void does not restock unless `restockOnVoid` is true.
 
-Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's server plus cashier and admin. Table events go to every role. Print events go to cashier and admin.
+Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's server plus cashier and admin. Table events go to every role. Print, catalogue, and shift events go to cashier and admin. `stock.low` and `settings.updated` go to admin only.
+
+## Admin services
+
+Catalogue, stock, purchasing, staff, attendance, cash shifts, expenses, and reports are HTTP routes in `interfaces/http/admin.ts`. They call `createAdminStore`. Each mutation writes `audit_log` and `sync_outbox` in the same transaction. Queries filter on `site_id`. Settings are cached in memory and dropped on `PUT /settings`. Reports are defined in `docs/REPORTS.md`. Stock math is defined in `docs/STOCK.md`. The route list is `docs/ADMIN-API.md`.
+
+`payments` stores one full payment per order and an optional `shift_id`. There is no partial payment. A cash shift's expected drawer is opening float + cash payments on that shift + pay-ins − pay-outs.
 
 ## Printing
 
@@ -36,7 +42,9 @@ Preparation tickets are ESC/POS text in code page PC858. The degree sign uses by
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.
 - Render Arabic ticket lines as images; the text renderer prints French only.
+- Admin screens on top of the admin API, then the waiter and cashier PWA.
+- Partial void of one unit on a line of several.
 
 ## Database
 
-PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` is append-only: a trigger rejects `UPDATE` and `DELETE`. `pnpm db:reset` and `pnpm db:seed` refuse to run when `NODE_ENV=production`. A reset regenerates device tokens. Failed PIN attempts increment `failed_attempts` in one `UPDATE ... RETURNING`, and set `locked_until` in that same statement once the threshold is reached. Integration tests use a separate database, `resto_test`.
+PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` and `stock_movements` are append-only: a trigger rejects `UPDATE` and `DELETE`. `pnpm db:reset`, `pnpm db:seed`, and `pnpm seed:history` refuse to run when `NODE_ENV=production`. A reset regenerates device tokens. Failed PIN attempts increment `failed_attempts` in one `UPDATE ... RETURNING`, and set `locked_until` in that same statement once the threshold is reached. Integration tests use a separate database, `resto_test`.

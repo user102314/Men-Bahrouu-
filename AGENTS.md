@@ -13,7 +13,7 @@ Interface languages: French and Arabic (RTL). Timezone: `Africa/Tunis`. Currency
 5. Sensitive actions write `audit_log` (actor, device, action, before/after): create, send, add, cancellation request, cancellation decision, reprint, failed login, price or role change.
 6. Do not physically delete orders, lines, or tickets. Change their status.
 7. Hash PINs and passwords with `argon2id`. Rate-limit login routes. Lock the account temporarily after N failures. No secrets in Git (`.env` ignored, `.env.example` committed). Floor sessions last 12 hours and admin sessions last 2 hours. Errors use `{ error: { code, message, details? }, requestId }`.
-8. Sending an order (status change + print jobs + audit + outbox) runs in a single database transaction. A job left in `PRINTING` when the hub starts returns to `PENDING`: a duplicate slip is preferred to a lost one. Text tickets print French only (PC858).
+8. Sending an order (status change + print jobs + recipe stock movements + audit + outbox) runs in a single database transaction. A short stock does not block the send. A job left in `PRINTING` when the hub starts returns to `PENDING`: a duplicate slip is preferred to a lost one. Text tickets print French only (PC858).
 9. Do not add features outside the current step. Note improvements in `docs/ARCHITECTURE.md`, section « Idées ».
 
 ## Access
@@ -40,7 +40,13 @@ The hub is the source of truth. Devices use HTTPS and Socket.IO. The service mus
 | `cancellation.request`                                                               | yes    | yes                         | yes   |
 | `cancellation.approve`                                                               | no     | only with an admin override | yes   |
 | `order.reprint`                                                                      | no     | yes                         | yes   |
-| `catalog.edit`, `stock.*`, `staff.*`, `device.manage`, `audit.view`, `settings.edit` | no     | no                          | yes   |
+| `payment.create`                                                                     | no     | yes                         | yes   |
+| `shift.manage`                                                                       | no     | yes                         | yes   |
+| `catalog.availability`                                                               | no     | yes                         | yes   |
+| `attendance.self`                                                                    | yes    | yes                         | yes   |
+| `catalog.edit`, `stock.manage`, `inventory.manage`, `purchase.manage`, `expense.manage` | no  | no                          | yes   |
+| `staff.manage`, `attendance.manage`, `printer.manage`, `settings.edit`               | no     | no                          | yes   |
+| `device.manage`, `audit.view`, `report.view`                                         | no     | no                          | yes   |
 
 Cashier override: `can('CASHIER', 'cancellation.approve')` and `can('CASHIER', 'order.discount')` are false. `requiresAdminOverride` is true for those two. The cashier submits an admin PIN or password. Audit the action with both identities. `order.discount` is the discount permission.
 
@@ -48,7 +54,7 @@ Cashier override: `can('CASHIER', 'cancellation.approve')` and `can('CASHIER', '
 
 Build domains 1–5 plus audit and sync: identity-access, catalog, floor, ordering, printing, `audit_log`, `sync_outbox` (no cloud send).
 
-Scaffold only (empty folder + one-line README): `payments-cash`, `inventory`, `staff`, `finance`.
+The admin HTTP API covers catalogue edits, stock, purchases, inventory, staff, attendance, cash shifts, expenses, and management reports. Payments stay internal records. Admin screens are not built yet.
 
 ## How to work
 
@@ -56,7 +62,7 @@ Follow the numbered steps. After each step run `pnpm typecheck && pnpm lint && p
 
 ## Out of scope
 
-Full UIs, stock, purchases, finance, attendance, real cloud sync, Arabic ticket image rendering, fiscal certification, and deployment onto the restaurant mini-PC.
+Admin screens, the waiter/cashier PWA, offline mode, local HTTPS, Arabic ticket rendering, real cloud sync, split payments, fiscal certification, and deployment onto the restaurant mini-PC.
 
 ## Done when
 

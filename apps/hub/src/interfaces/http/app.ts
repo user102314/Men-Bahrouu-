@@ -23,6 +23,7 @@ import { ZodError } from "zod";
 import { AuthService, type SessionGrant } from "../../application/auth-service.js";
 import type { SecretHasher } from "../../application/ports.js";
 import type { AppConfig } from "../../config/env.js";
+import { DEFAULT_VAT_RATE_BP } from "../../config/vat.js";
 import { systemClock, type Clock } from "../../domain/auth/clock.js";
 import { hashSecret, verifySecret } from "../../infrastructure/auth/argon2-hasher.js";
 import { hashDeviceToken, newDeviceToken } from "../../infrastructure/auth/device-token.js";
@@ -37,6 +38,7 @@ import { FakePrinterGateway } from "../../infrastructure/printing/fake-gateway.j
 import { EscPosNetworkGateway } from "../../infrastructure/printing/network-gateway.js";
 import { PrintService } from "../../infrastructure/printing/print-service.js";
 import { attachRealtime } from "../realtime/hub.js";
+import { registerAdminRoutes } from "./admin.js";
 import { AppError, errorBody } from "./errors.js";
 import { registerOrderRoutes } from "./orders.js";
 import { registerPrintRoutes } from "./printing.js";
@@ -266,6 +268,17 @@ export async function buildApp(
     authenticate,
     requirePermission,
     onCommitted: () => printing.kick(),
+  });
+  registerAdminRoutes(app, {
+    sql: deps.sql,
+    realtime,
+    clock,
+    siteId: deps.config.siteId,
+    cutoffHour: deps.config.businessDayCutoffHour,
+    printColumns: deps.config.printColumns,
+    vatBp: DEFAULT_VAT_RATE_BP,
+    authenticate,
+    requirePermission,
   });
   registerPrintRoutes(app, {
     printing,
