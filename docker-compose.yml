@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: resto
       POSTGRES_DB: resto
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - resto_pgdata:/var/lib/postgresql/data
     healthcheck:
