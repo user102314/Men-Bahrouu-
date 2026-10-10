@@ -29,6 +29,20 @@
       "when": 1791645714865,
       "tag": "0003_fat_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791647855914,
+      "tag": "0004_medical_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791647860000,
+      "tag": "0005_stock_movements_immutable",
+      "breakpoints": true
     }
   ]
 }

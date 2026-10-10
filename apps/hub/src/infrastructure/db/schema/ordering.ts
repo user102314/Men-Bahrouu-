@@ -60,6 +60,7 @@ export const orders = pgTable(
       table.dailyNumber,
     ),
     index("orders_site_id_status_idx").on(table.siteId, table.status),
+    index("orders_site_business_date_idx").on(table.siteId, table.businessDate),
     index("orders_server_id_idx").on(table.serverId),
     uniqueIndex("orders_one_open_per_table")
       .on(table.tableId)

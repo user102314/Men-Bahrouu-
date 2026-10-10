@@ -1,4 +1,4 @@
-import { integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 
 import { idColumn, timestampColumns } from "./common.js";
 import { tableStatusEnum } from "./enums.js";
@@ -15,6 +15,7 @@ export const floorTables = pgTable(
     zone: text("zone").notNull(),
     seats: integer("seats").notNull(),
     status: tableStatusEnum("status").notNull().default("FREE"),
+    isActive: boolean("is_active").notNull().default(true),
     ...timestampColumns(),
   },
   (table) => [unique("floor_tables_site_id_label_unique").on(table.siteId, table.label)],
