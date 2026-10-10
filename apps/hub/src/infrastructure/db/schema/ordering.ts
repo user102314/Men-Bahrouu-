@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -60,6 +61,11 @@ export const orders = pgTable(
     ),
     index("orders_site_id_status_idx").on(table.siteId, table.status),
     index("orders_server_id_idx").on(table.serverId),
+    uniqueIndex("orders_one_open_per_table")
+      .on(table.tableId)
+      .where(
+        sql`${table.tableId} is not null and ${table.status} in ('DRAFT', 'SENT', 'SERVED')`,
+      ),
     check("orders_total_non_negative", sql`${table.totalMillimes} >= 0`),
   ],
 );

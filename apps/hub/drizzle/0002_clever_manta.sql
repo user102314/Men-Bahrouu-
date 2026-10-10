@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "orders_one_open_per_table" ON "orders" USING btree ("table_id") WHERE "orders"."table_id" is not null and "orders"."status" in ('DRAFT', 'SENT', 'SERVED');

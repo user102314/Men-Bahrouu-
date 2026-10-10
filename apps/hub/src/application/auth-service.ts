@@ -93,6 +93,28 @@ export class AuthService {
     return { ok: true, profiles };
   }
 
+  async verifyAdminOverride(
+    email: string,
+    password: string,
+  ): Promise<{ ok: true; userId: string } | AuthFailure> {
+    const user = await this.users.findByEmail(this.options.siteId, email);
+    if (!user || user.role !== "ADMIN" || !user.isActive || user.passwordHash === null) {
+      await this.hasher.verify(this.dummyHash, password);
+      return { ok: false, code: "AUTH_INVALID" };
+    }
+    const now = this.clock.now();
+    if (user.lockedUntil && user.lockedUntil > now) {
+      await this.auditLock(user, null);
+      return lockedResult(user.lockedUntil, now);
+    }
+    const secretOk = await this.hasher.verify(user.passwordHash, password);
+    if (!secretOk) {
+      return this.recordFailure(user, now);
+    }
+    await this.users.resetLoginFailures(user.id);
+    return { ok: true, userId: user.id };
+  }
+
   async logout(actorUserId: string, deviceId: string | null): Promise<void> {
     await this.audit.record({
       siteId: this.options.siteId,

@@ -12,7 +12,7 @@ Amounts are branded integer millimes. VAT is computed from a caller-supplied bas
 
 ## Permissions
 
-`can(role, permission)` is the server-side check. A cashier does not hold `cancellation.approve` or `order.discount`; `requiresAdminOverride` marks those two. The override flow itself is completed with the cancellation routes.
+`can(role, permission)` is the server-side check. A cashier does not hold `cancellation.approve` or `order.discount`; `requiresAdminOverride` marks those two. Approving a cancellation checks an admin password on the hub and writes both identities to the audit log.
 
 ## HTTP
 
@@ -22,9 +22,16 @@ Every error is `{ error: { code, message, details? }, requestId }`. Stable codes
 
 `businessDate` subtracts `BUSINESS_DAY_CUTOFF_HOUR` (default 5) from the current instant, then reads the calendar date in `Africa/Tunis`. A service that ends at 01:00 stays on the previous day. The cutoff is an absolute duration, so a daylight-saving gap can shift the boundary by one hour.
 
+## Orders
+
+A client-generated order id is idempotent for the same server. Another server using that id receives `ORDER_ID_CONFLICT`. Prices are copied from the catalog when the line is added. Sending, printing, audit, and the outbox row share one transaction; realtime events fire after commit. At most one `DRAFT`, `SENT`, or `SERVED` order may reference a table. An unsent line is voided in place rather than deleted. A cashier approves a cancellation only with an admin password, and the audit row stores both identities.
+
+Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's server plus cashier and admin. Table events go to every role. Print events go to cashier and admin.
+
 ## Idées
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.
+- Render Arabic ticket lines as images; the text renderer prints French only.
 
 ## Database
 

@@ -31,7 +31,10 @@ import {
   createDeviceRepository,
   createUserRepository,
 } from "../../infrastructure/db/repositories.js";
+import { createOrderingStore } from "../../infrastructure/db/ordering-store.js";
+import { attachRealtime } from "../realtime/hub.js";
 import { AppError, errorBody } from "./errors.js";
+import { registerOrderRoutes } from "./orders.js";
 
 const REDACT_PATHS = [
   "pin",
@@ -221,6 +224,19 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       return { id: revoked.id, isActive: revoked.isActive };
     },
   );
+
+  const realtime = attachRealtime(app, auth, deps.config.corsOrigins);
+  registerOrderRoutes(app, {
+    auth,
+    orders: createOrderingStore(deps.sql, {
+      siteId: deps.config.siteId,
+      cutoffHour: deps.config.businessDayCutoffHour,
+    }),
+    realtime,
+    clock,
+    authenticate,
+    requirePermission,
+  });
 
   return app;
 

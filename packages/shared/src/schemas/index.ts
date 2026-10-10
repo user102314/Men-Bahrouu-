@@ -34,6 +34,7 @@ export const createOrderSchema = z.strictObject({
   tableId: uuidSchema.nullable().optional(),
   note: z.string().max(200).optional(),
   items: z.array(orderLineSchema).min(1),
+  sendImmediately: z.boolean().default(false),
 });
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
@@ -41,6 +42,16 @@ export const addItemsSchema = z.strictObject({
   items: z.array(orderLineSchema).min(1),
 });
 export type AddItemsInput = z.infer<typeof addItemsSchema>;
+
+export const updateOrderItemSchema = z
+  .strictObject({
+    quantity: z.number().int().min(1).max(99).optional(),
+    note: z.string().max(120).nullable().optional(),
+  })
+  .refine((value) => value.quantity !== undefined || value.note !== undefined, {
+    message: "Quantity or note is required",
+  });
+export type UpdateOrderItemInput = z.infer<typeof updateOrderItemSchema>;
 
 export const requestCancellationSchema = z.strictObject({
   orderItemId: uuidSchema.nullable().optional(),
