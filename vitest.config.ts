@@ -5,5 +5,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts", "packages/**/*.test.ts", "apps/**/*.test.ts"],
     passWithNoTests: true,
+    fileParallelism: false,
+    testTimeout: 20_000,
   },
 });

@@ -16,7 +16,7 @@ Amounts are branded integer millimes. VAT is computed from a caller-supplied bas
 
 ## Database
 
-PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. `audit_log` is append-only.
+PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` is append-only: a trigger rejects `UPDATE` and `DELETE`. The development seed refuses to run when `NODE_ENV=production`. Integration tests use a separate database, `resto_test`.
 
 ## Idées
 

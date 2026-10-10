@@ -4,7 +4,7 @@ const databaseUrl = process.env.DATABASE_URL ?? "postgres://resto:resto@localhos
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/infrastructure/db/schema.ts",
+  schema: "./src/infrastructure/db/schema/index.ts",
   out: "./drizzle",
   dbCredentials: {
     url: databaseUrl,

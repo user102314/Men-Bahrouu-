@@ -7,10 +7,12 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file=../../.env ./node_modules/drizzle-kit/bin.cjs migrate",
     "db:seed": "node --env-file=../../.env --import tsx src/infrastructure/db/seed.ts",
+    "db:test:prepare": "node --env-file=../../.env --import tsx src/infrastructure/db/prepare-test-database.ts",
     "db:reset": "node --env-file=../../.env --import tsx src/infrastructure/db/reset.ts && node --env-file=../../.env ./node_modules/drizzle-kit/bin.cjs migrate && node --env-file=../../.env --import tsx src/infrastructure/db/seed.ts"
   },
   "dependencies": {
     "@resto/shared": "workspace:*",
+    "argon2": "0.45.1",
     "drizzle-orm": "0.45.4",
     "postgres": "3.4.9"
   },

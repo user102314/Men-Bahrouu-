@@ -14,6 +14,7 @@
     "db:generate": "pnpm --filter @resto/hub db:generate",
     "db:migrate": "pnpm --filter @resto/hub db:migrate",
     "db:seed": "pnpm --filter @resto/hub db:seed",
+    "db:test:prepare": "pnpm --filter @resto/hub db:test:prepare",
     "db:reset": "pnpm --filter @resto/hub db:reset",
     "test": "vitest run",
     "format": "prettier --write .",

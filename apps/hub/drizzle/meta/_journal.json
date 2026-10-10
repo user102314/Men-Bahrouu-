@@ -1,5 +1,20 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791643016197,
+      "tag": "0000_sloppy_jetstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791643028357,
+      "tag": "0001_audit_log_immutable",
+      "breakpoints": true
+    }
+  ]
 }
