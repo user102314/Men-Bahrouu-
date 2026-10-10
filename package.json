@@ -9,8 +9,12 @@
   "scripts": {
     "dev": "pnpm -r --if-present dev",
     "build": "pnpm -r --if-present build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm -r --if-present typecheck",
     "lint": "eslint .",
+    "db:generate": "pnpm --filter @resto/hub db:generate",
+    "db:migrate": "pnpm --filter @resto/hub db:migrate",
+    "db:seed": "pnpm --filter @resto/hub db:seed",
+    "db:reset": "pnpm --filter @resto/hub db:reset",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

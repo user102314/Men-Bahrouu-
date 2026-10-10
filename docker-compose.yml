@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: resto-postgres
+    environment:
+      POSTGRES_USER: resto
+      POSTGRES_PASSWORD: resto
+      POSTGRES_DB: resto
+    ports:
+      - "5432:5432"
+    volumes:
+      - resto_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resto -d resto"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  resto_pgdata:
