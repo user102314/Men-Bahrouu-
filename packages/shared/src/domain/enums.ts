@@ -40,9 +40,52 @@ export const PAYMENT_METHODS = ["CASH", "CARD", "MEAL_VOUCHER"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS);
 
-export const STOCK_MOVEMENT_TYPES = ["IN", "OUT", "ADJUSTMENT"] as const;
-export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
-export const stockMovementTypeSchema = z.enum(STOCK_MOVEMENT_TYPES);
+export const BASE_UNITS = ["G", "ML", "PIECE"] as const;
+export type BaseUnit = (typeof BASE_UNITS)[number];
+export const baseUnitSchema = z.enum(BASE_UNITS);
+
+export const STOCK_MOVEMENT_REASONS = [
+  "PURCHASE",
+  "SALE",
+  "WASTE",
+  "INVENTORY",
+  "CORRECTION",
+  "PURCHASE_CANCEL",
+] as const;
+export type StockMovementReason = (typeof STOCK_MOVEMENT_REASONS)[number];
+export const stockMovementReasonSchema = z.enum(STOCK_MOVEMENT_REASONS);
+
+export const PURCHASE_STATUSES = ["DRAFT", "RECEIVED", "CANCELLED"] as const;
+export type PurchaseStatus = (typeof PURCHASE_STATUSES)[number];
+export const purchaseStatusSchema = z.enum(PURCHASE_STATUSES);
+
+export const PURCHASE_PAYMENT_STATUSES = ["UNPAID", "PAID"] as const;
+export type PurchasePaymentStatus = (typeof PURCHASE_PAYMENT_STATUSES)[number];
+export const purchasePaymentStatusSchema = z.enum(PURCHASE_PAYMENT_STATUSES);
+
+export const EXPENSE_CATEGORIES = [
+  "RENT",
+  "SALARY",
+  "UTILITIES",
+  "SUPPLIES",
+  "MAINTENANCE",
+  "TAXES",
+  "OTHER",
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export const expenseCategorySchema = z.enum(EXPENSE_CATEGORIES);
+
+export const CASH_MOVEMENT_TYPES = ["PAY_IN", "PAY_OUT"] as const;
+export type CashMovementType = (typeof CASH_MOVEMENT_TYPES)[number];
+export const cashMovementTypeSchema = z.enum(CASH_MOVEMENT_TYPES);
+
+export const SHIFT_STATUSES = ["OPEN", "CLOSED"] as const;
+export type ShiftStatus = (typeof SHIFT_STATUSES)[number];
+export const shiftStatusSchema = z.enum(SHIFT_STATUSES);
+
+export const ATTENDANCE_SOURCES = ["SELF", "ADMIN"] as const;
+export type AttendanceSource = (typeof ATTENDANCE_SOURCES)[number];
+export const attendanceSourceSchema = z.enum(ATTENDANCE_SOURCES);
 
 export const OUTBOX_OPS = ["UPSERT", "DELETE"] as const;
 export type OutboxOp = (typeof OUTBOX_OPS)[number];

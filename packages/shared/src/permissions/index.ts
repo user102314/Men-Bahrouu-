@@ -14,8 +14,14 @@ export const PERMISSIONS = [
   "payment.create",
   "shift.manage",
   "catalog.edit",
+  "catalog.availability",
   "stock.manage",
+  "inventory.manage",
+  "purchase.manage",
+  "expense.manage",
   "staff.manage",
+  "attendance.self",
+  "attendance.manage",
   "device.manage",
   "printer.manage",
   "audit.view",
@@ -32,6 +38,7 @@ const WAITER_PERMISSIONS = [
   "order.view.own",
   "order.markServed",
   "cancellation.request",
+  "attendance.self",
 ] as const satisfies readonly Permission[];
 
 const CASHIER_PERMISSIONS = [
@@ -40,6 +47,7 @@ const CASHIER_PERMISSIONS = [
   "order.reprint",
   "payment.create",
   "shift.manage",
+  "catalog.availability",
 ] as const satisfies readonly Permission[];
 
 /**

@@ -65,6 +65,30 @@ export const cancellationRealtimeSchema = z.strictObject({
   order: publicOrderSchema,
 });
 
+export const catalogRealtimeSchema = z.strictObject({
+  version: z.number().int().positive(),
+  productId: uuidSchema,
+  isAvailable: z.boolean(),
+});
+
+export const stockLowRealtimeSchema = z.strictObject({
+  stockItemId: uuidSchema,
+  code: z.string(),
+  quantityBase: z.number().int(),
+  minThresholdBase: z.number().int().nonnegative(),
+});
+
+export const shiftRealtimeSchema = z.strictObject({
+  id: uuidSchema,
+  deviceId: uuidSchema,
+  status: z.enum(["OPEN", "CLOSED"]),
+  varianceMillimes: z.number().int().nullable(),
+});
+
+export const settingsRealtimeSchema = z.strictObject({
+  keys: z.array(z.string()).min(1),
+});
+
 export const REALTIME_EVENTS = [
   "order.created",
   "order.updated",
@@ -74,5 +98,10 @@ export const REALTIME_EVENTS = [
   "table.updated",
   "print.job.updated",
   "print.failed",
+  "catalog.updated",
+  "stock.low",
+  "shift.opened",
+  "shift.closed",
+  "settings.updated",
 ] as const;
 export type RealtimeEventName = (typeof REALTIME_EVENTS)[number];

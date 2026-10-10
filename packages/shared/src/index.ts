@@ -6,4 +6,5 @@ export * from "./money.js";
 export * from "./permissions/index.js";
 export * from "./realtime.js";
 export * from "./schemas/index.js";
+export * from "./stock.js";
 export * from "./tickets.js";
