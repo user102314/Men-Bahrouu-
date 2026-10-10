@@ -39,6 +39,7 @@ import { EscPosNetworkGateway } from "../../infrastructure/printing/network-gate
 import { PrintService } from "../../infrastructure/printing/print-service.js";
 import { attachRealtime } from "../realtime/hub.js";
 import { registerAdminRoutes } from "./admin.js";
+import { corsOriginOption } from "./dev-cors.js";
 import { AppError, errorBody } from "./errors.js";
 import { registerOrderRoutes } from "./orders.js";
 import { registerPrintRoutes } from "./printing.js";
@@ -107,8 +108,9 @@ export async function buildApp(
   );
 
   await app.register(helmet);
+  const origin = corsOriginOption(deps.config.nodeEnv, deps.config.corsOrigins);
   await app.register(cors, {
-    origin: [...deps.config.corsOrigins],
+    origin,
     allowedHeaders: ["Content-Type", "Authorization", "X-Device-Token"],
   });
   await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
@@ -235,7 +237,7 @@ export async function buildApp(
     },
   );
 
-  const realtime = attachRealtime(app, auth, deps.config.corsOrigins);
+  const realtime = attachRealtime(app, auth, origin);
   const gateway =
     deps.printerGateway ??
     (deps.config.nodeEnv === "test" ? new FakePrinterGateway() : new EscPosNetworkGateway());

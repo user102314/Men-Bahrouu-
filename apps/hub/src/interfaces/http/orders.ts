@@ -147,6 +147,17 @@ export function registerOrderRoutes(
   );
 
   app.post(
+    "/orders/:id/request-bill",
+    { preHandler: deps.requirePermission("order.markServed") },
+    async (request) => {
+      const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+      const result = await run(() => orders.requestBill(actor(request), params.id));
+      finish(realtime, result.events, deps.onCommitted);
+      return result.order;
+    },
+  );
+
+  app.post(
     "/orders/:id/served",
     { preHandler: deps.requirePermission("order.markServed") },
     async (request) => {

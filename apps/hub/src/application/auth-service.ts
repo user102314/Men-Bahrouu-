@@ -77,7 +77,12 @@ export class AuthService {
   async profiles(
     deviceToken: string,
   ): Promise<
-    { ok: true; profiles: { id: string; displayName: string; role: Role }[] } | AuthFailure
+    | {
+        ok: true;
+        device: { name: string; type: DeviceType };
+        profiles: { id: string; displayName: string; role: Role }[];
+      }
+    | AuthFailure
   > {
     const device = await this.findPresentedDevice(deviceToken);
     if (!device) {
@@ -90,7 +95,7 @@ export class AuthService {
     const profiles = staff
       .filter((user) => canLogin(toLoginUser(user), device).ok)
       .map((user) => ({ id: user.id, displayName: user.displayName, role: user.role }));
-    return { ok: true, profiles };
+    return { ok: true, device: { name: device.name, type: device.type }, profiles };
   }
 
   async verifyAdminOverride(

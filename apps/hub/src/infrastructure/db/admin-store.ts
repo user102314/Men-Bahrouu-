@@ -1387,8 +1387,30 @@ async function pay(
     update orders set status = 'PAID', closed_at = ${now.toISOString()}, version = version + 1, updated_at = now()
     where id = ${orderId}
   `;
+  let tableEvent: LiveEvent | null = null;
   if (order.table_id) {
     await tx`update floor_tables set status = 'FREE', updated_at = now() where id = ${order.table_id}`;
+    const tables = await tx<{ label: string; zone: string; seats: number }[]>`
+      select label, zone, seats from floor_tables where id = ${order.table_id}
+    `;
+    const table = tables[0];
+    if (table) {
+      tableEvent = {
+        name: "table.updated",
+        serverId: order.server_id,
+        payload: {
+          version: order.version + 1,
+          table: {
+            id: order.table_id,
+            label: table.label,
+            zone: table.zone,
+            seats: table.seats,
+            status: "FREE",
+            openOrderId: null,
+          },
+        },
+      };
+    }
   }
   await track(tx, siteId, actor, "order.paid", "payment", paymentId, { status: order.status }, {
     amountMillimes: order.total_millimes,
@@ -1408,9 +1430,7 @@ async function pay(
     events: [
       { name: "order.paid", serverId: order.server_id, payload: { version: order.version + 1, orderId } },
       { name: "order.updated", serverId: order.server_id, payload: { version: order.version + 1, orderId } },
-      ...(order.table_id
-        ? [{ name: "table.updated", serverId: order.server_id, payload: { tableId: order.table_id, status: "FREE" } }]
-        : []),
+      ...(tableEvent ? [tableEvent] : []),
     ],
   };
 }

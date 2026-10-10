@@ -172,6 +172,7 @@ export interface OrderingStore {
     now: Date,
   ): Promise<OrderMutation>;
   listCancellations(status: CancellationStatus): Promise<unknown>;
+  requestBill(actor: Actor, orderId: string): Promise<OrderMutation>;
 }
 
 export function createOrderingStore(
@@ -204,6 +205,7 @@ export function createOrderingStore(
         decideCancellation(tx, options.siteId, actor, cancellationId, approve, overrideBy, now),
       ),
     listCancellations: (status) => listCancellations(sql, options.siteId, status),
+    requestBill: (actor, orderId) => mutate(sql, (tx) => requestBill(tx, options.siteId, actor, orderId)),
   };
 }
 
@@ -651,6 +653,24 @@ async function decideCancellation(
   return { order, events, created: false };
 }
 
+async function requestBill(tx: Tx, siteId: string, actor: Actor, orderId: string): Promise<OrderMutation> {
+  const header = await lockHeader(tx, siteId, orderId, actor);
+  if (header.status === "PAID" || header.status === "CANCELLED") {
+    throw new DomainError("INVALID_TRANSITION");
+  }
+  const order = await readOrder(tx, orderId);
+  const events: RealtimeMessage[] = [];
+  if (header.tableId) {
+    await tx`
+      update floor_tables set status = 'TO_PAY', updated_at = now()
+      where id = ${header.tableId} and site_id = ${siteId}
+    `;
+    events.push(await tableEvent(tx, header.tableId, order, order.id));
+  }
+  await track(tx, siteId, actor, "order.bill_requested", "order", order.id, null, { tableId: header.tableId });
+  return { order, events, created: false };
+}
+
 async function occupyTable(
   tx: Tx,
   siteId: string,
@@ -944,11 +964,12 @@ async function catalog(sql: postgres.Sql, siteId: string) {
       id: string;
       name_fr: string;
       name_ar: string;
+      station_id: string;
       station_kind: StationKind;
       sort_order: number;
     }[]
   >`
-    select c.id, c.name_fr, c.name_ar, s.kind as station_kind, c.sort_order
+    select c.id, c.name_fr, c.name_ar, c.station_id, s.kind as station_kind, c.sort_order
     from categories c
     join stations s on s.id = c.station_id
     where c.site_id = ${siteId} and c.is_active = true
@@ -962,12 +983,13 @@ async function catalog(sql: postgres.Sql, siteId: string) {
       name_ar: string;
       price_millimes: number;
       vat_rate_bp: number;
+      is_available: boolean;
       sort_order: number;
     }[]
   >`
-    select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, sort_order
+    select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, is_available, sort_order
     from products
-    where site_id = ${siteId} and is_available = true
+    where site_id = ${siteId} and is_active = true
     order by sort_order, name_fr
   `;
   return {
@@ -975,6 +997,7 @@ async function catalog(sql: postgres.Sql, siteId: string) {
       id: category.id,
       nameFr: category.name_fr,
       nameAr: category.name_ar,
+      stationId: category.station_id,
       stationKind: category.station_kind,
       products: products
         .filter((product) => product.category_id === category.id)
@@ -984,6 +1007,7 @@ async function catalog(sql: postgres.Sql, siteId: string) {
           nameAr: product.name_ar,
           priceMillimes: product.price_millimes,
           vatRateBp: product.vat_rate_bp,
+          isAvailable: product.is_available,
         })),
     })),
   };
@@ -995,8 +1019,8 @@ async function listTables(sql: postgres.Sql, siteId: string, actor: Actor) {
   >`
     select id, label, zone, seats, status from floor_tables where site_id = ${siteId} order by label
   `;
-  const open = await sql<{ id: string; table_id: string; server_id: string }[]>`
-    select id, table_id, server_id from orders
+  const open = await sql<{ id: string; table_id: string; server_id: string; opened_at: Date | string }[]>`
+    select id, table_id, server_id, opened_at from orders
     where site_id = ${siteId} and table_id is not null and status in ('DRAFT', 'SENT', 'SERVED')
   `;
   return {
@@ -1018,6 +1042,8 @@ async function listTables(sql: postgres.Sql, siteId: string, actor: Actor) {
         seats: table.seats,
         status: table.status,
         openOrderId,
+        occupiedSince: order ? iso(order.opened_at) : null,
+        ownedByMe: order ? order.server_id === actor.id : false,
       };
     }),
   };

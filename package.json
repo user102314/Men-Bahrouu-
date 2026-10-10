@@ -19,6 +19,7 @@
     "fake-printers": "pnpm --filter @resto/hub exec tsx ../../tools/fake-printer/server.ts",
     "demo:flow": "pnpm --filter @resto/hub exec tsx ../../tools/demo-flow.ts",
     "seed:history": "pnpm --filter @resto/hub db:history",
+    "dev:info": "pnpm --filter @resto/hub exec tsx ../../tools/dev-info.ts",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

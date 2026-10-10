@@ -64,6 +64,7 @@ const [passwordHash, soniaPin, mohamedPin, amiraPin, youssefPin] = await Promise
 
 const tablet = createDeviceToken();
 const cashierPc = createDeviceToken();
+const phone = createDeviceToken();
 
 await db.insert(sites).values({
   id: siteId,
@@ -378,6 +379,13 @@ await db.insert(devices).values([
     type: "CASHIER_PC",
     tokenHash: cashierPc.tokenHash,
   },
+  {
+    id: SEED_IDS.phone,
+    siteId,
+    name: "Téléphone admin",
+    type: "PHONE",
+    tokenHash: phone.tokenHash,
+  },
 ]);
 
 console.log("");
@@ -393,9 +401,11 @@ const devicesFile = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../../../../.devices.dev.json",
 );
+const tokenFile = `${JSON.stringify({ tablet: tablet.token, cashierPc: cashierPc.token, phone: phone.token }, null, 2)}\n`;
+writeFileSync(devicesFile, tokenFile, { encoding: "utf8", mode: 0o600 });
 writeFileSync(
-  devicesFile,
-  `${JSON.stringify({ tablet: tablet.token, cashierPc: cashierPc.token }, null, 2)}\n`,
+  join(dirname(fileURLToPath(import.meta.url)), "../../../../../.dev-device-tokens.json"),
+  tokenFile,
   { encoding: "utf8", mode: 0o600 },
 );
 console.log(`Jetons de développement enregistrés dans ${devicesFile} (fichier ignoré par Git).`);

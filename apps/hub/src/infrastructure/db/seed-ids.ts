@@ -34,6 +34,7 @@ export const SEED_IDS = {
   assida: "0199c0a0-0000-7000-8000-000000000415",
   tablet: "0199c0a0-0000-7000-8000-000000000601",
   cashierPc: "0199c0a0-0000-7000-8000-000000000602",
+  phone: "0199c0a0-0000-7000-8000-000000000603",
 } as const;
 
 export function tableId(index: number): string {

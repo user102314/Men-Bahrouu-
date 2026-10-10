@@ -300,6 +300,20 @@ describe("orders", () => {
     );
   });
 
+  it("asks for the bill and marks the table to pay", async () => {
+    const created = await create(waiterJwt, newId(), [{ productId: coffeeId, quantity: 1 }], tableId);
+    const order = created.json() as PublicOrder;
+    await app.inject({ method: "POST", url: `/orders/${order.id}/send`, headers: bearer(waiterJwt) });
+    const bill = await app.inject({
+      method: "POST",
+      url: `/orders/${order.id}/request-bill`,
+      headers: bearer(waiterJwt),
+    });
+    expect(bill.statusCode).toBe(200);
+    const table = await sql<{ status: string }[]>`select status from floor_tables where id = ${tableId}`;
+    expect(table[0]?.status).toBe("TO_PAY");
+  });
+
   it("keeps a waiter's socket limited to that waiter's orders", async () => {
     const denied = connect("");
     await new Promise<void>((resolve, reject) => {

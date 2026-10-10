@@ -17,10 +17,10 @@ export interface RealtimeHub {
 export function attachRealtime(
   app: FastifyInstance,
   auth: AuthService,
-  origins: readonly string[],
+  origin: readonly string[] | ((origin: string | undefined, callback: (error: null, allow: boolean) => void) => void),
 ): RealtimeHub {
   const io = new Server(app.server, {
-    cors: { origin: [...origins] },
+    cors: { origin: typeof origin === "function" ? origin : [...origin] },
   });
 
   io.use((socket, next) => {

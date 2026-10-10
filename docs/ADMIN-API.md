@@ -138,7 +138,9 @@ Movement: `{ "type": "PAY_OUT", "amountMillimes": 300, "reason": "Achat de glace
 
 Close: `{ "countedMillimes": 12000 }` returns `{ "expectedMillimes", "varianceMillimes" }` and publishes `shift.closed`.
 
-Payment: `{ "method": "CASH", "tenderedMillimes": 3000 }` or `{ "method": "CARD" }`. The order must be `SENT` or `SERVED`, with every active line already sent. The row stores `payments.shift_id` when the cashier device has an open shift. Response `201`: `{ "notice", "payment" }`. Publishes `order.paid`.
+Payment: `{ "method": "CASH", "tenderedMillimes": 3000 }` or `{ "method": "CARD" }`. The order must be `SENT` or `SERVED`, with every active line already sent. The amount is the order total computed by the hub. The row stores `payments.shift_id` when the cashier device has an open shift. Response `201`: `{ "notice": "enregistrement de gestion, non fiscal", "payment" }`. Publishes `order.paid` and `table.updated`. A second payment returns `ALREADY_PAID`.
+
+`POST /orders/:id/request-bill` — permission `order.markServed`. If the order is on a table, the table becomes `TO_PAY` and `table.updated` is published. A paid or cancelled order returns `INVALID_TRANSITION`.
 
 Expense: `{ "id", "category": "SUPPLIES", "amountMillimes": 45000, "expenseDate": "2026-10-03", "payFromShiftId" }`. `payFromShiftId` also writes a `PAY_OUT`. Void with `{ "isVoid": true }`. Rows are not deleted.
 
