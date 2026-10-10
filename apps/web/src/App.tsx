@@ -6,6 +6,7 @@ import { HubLinkProvider } from "./components/HubLink.js";
 import { RoleGuard } from "./components/RoleGuard.js";
 import { queryClient } from "./lib/query.js";
 import { AdminSoonPage } from "./pages/AdminSoonPage.js";
+import { CashierPage } from "./pages/CashierPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { SetupPage } from "./pages/SetupPage.js";
 import { WaiterPage } from "./pages/WaiterPage.js";
@@ -25,6 +26,14 @@ export function App() {
                 element={
                   <RoleGuard allow={["WAITER", "ADMIN"]}>
                     <WaiterPage />
+                  </RoleGuard>
+                }
+              />
+              <Route
+                path="/cashier"
+                element={
+                  <RoleGuard allow={["CASHIER", "ADMIN"]}>
+                    <CashierPage />
                   </RoleGuard>
                 }
               />
