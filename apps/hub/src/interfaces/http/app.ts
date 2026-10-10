@@ -156,7 +156,7 @@ export async function buildApp(
     if (!result.ok) {
       throw failure(result.code, result.retryAfterSeconds);
     }
-    return reply.send({ profiles: result.profiles });
+    return reply.send({ device: result.device, profiles: result.profiles });
   });
 
   app.post(

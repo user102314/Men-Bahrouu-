@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --fond: #f6efe4;
+  --surface: #fbf8f2;
+  --ink: #1b2430;
+  --primary: #1d4e89;
+  --accent: #e3a72f;
+  --terracotta: #c8452d;
+  --olive: #4f7a3a;
+  --line: #e4d9c7;
+  --bar: #1f7a8c;
+  color-scheme: light;
+}
+
+.dark {
+  --fond: #0f1a2a;
+  --surface: #16243a;
+  --ink: #eaf0f8;
+  --primary: #5b9be0;
+  --accent: #f0b84a;
+  --terracotta: #e0674e;
+  --olive: #7fb069;
+  --line: #24364f;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-fond: var(--fond);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --color-terracotta: var(--terracotta);
+  --color-olive: var(--olive);
+  --color-line: var(--line);
+  --color-bar: var(--bar);
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-arabic: "Cairo", "Segoe UI", sans-serif;
+  --radius-card: 14px;
+  --radius-button: 12px;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+html[dir="rtl"] body {
+  font-family: var(--font-arabic), var(--font-sans);
+}
+
+h1,
+h2,
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
+
+.shake {
+  animation: shake 0.35s ease;
+}
