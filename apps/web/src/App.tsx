@@ -8,6 +8,7 @@ import { queryClient } from "./lib/query.js";
 import { AdminSoonPage } from "./pages/AdminSoonPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { SetupPage } from "./pages/SetupPage.js";
+import { WaiterPage } from "./pages/WaiterPage.js";
 
 export function App() {
   return (
@@ -19,6 +20,14 @@ export function App() {
               <Route path="/" element={<Navigate to="/login" replace />} />
               <Route path="/setup" element={<SetupPage />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route
+                path="/waiter"
+                element={
+                  <RoleGuard allow={["WAITER", "ADMIN"]}>
+                    <WaiterPage />
+                  </RoleGuard>
+                }
+              />
               <Route
                 path="/admin"
                 element={
