@@ -23,6 +23,10 @@ const envSchema = z.object({
     .positive()
     .default(5 * 60),
   BUSINESS_DAY_CUTOFF_HOUR: z.coerce.number().int().min(0).max(23).default(5),
+  PRINT_COLUMNS: z.coerce.number().int().min(16).max(64).default(48),
+  PRINT_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+  PRINT_WRITE_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+  PRINT_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -37,6 +41,10 @@ export interface AppConfig {
   lockoutAttempts: number;
   lockoutSeconds: number;
   businessDayCutoffHour: number;
+  printColumns: number;
+  printConnectTimeoutMs: number;
+  printWriteTimeoutMs: number;
+  printMaxAttempts: number;
   nodeEnv: "development" | "test" | "production";
   version: string;
 }
@@ -68,6 +76,10 @@ export function loadConfig(env: NodeJS.ProcessEnv, version = "0.0.0"): AppConfig
     lockoutAttempts: parsed.data.LOCKOUT_ATTEMPTS,
     lockoutSeconds: parsed.data.LOCKOUT_SECONDS,
     businessDayCutoffHour: parsed.data.BUSINESS_DAY_CUTOFF_HOUR,
+    printColumns: parsed.data.PRINT_COLUMNS,
+    printConnectTimeoutMs: parsed.data.PRINT_CONNECT_TIMEOUT_MS,
+    printWriteTimeoutMs: parsed.data.PRINT_WRITE_TIMEOUT_MS,
+    printMaxAttempts: parsed.data.PRINT_MAX_ATTEMPTS,
     nodeEnv: parsed.data.NODE_ENV,
     version,
   };

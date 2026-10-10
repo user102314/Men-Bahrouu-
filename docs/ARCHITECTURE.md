@@ -28,6 +28,10 @@ A client-generated order id is idempotent for the same server. Another server us
 
 Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's server plus cashier and admin. Table events go to every role. Print events go to cashier and admin.
 
+## Printing
+
+Preparation tickets are ESC/POS text in code page PC858. Arabic names stay in the payload and are not drawn on the text ticket. The hub claims pending jobs with `FOR UPDATE SKIP LOCKED`, so two workers cannot print the same slip. A job left in `PRINTING` when the hub starts is set back to `PENDING`: a duplicate slip is preferred to a lost one. After five failures the job moves to the station's fallback printer once, then becomes `FAILED`. Same-printer jobs are sent one after another; different printers run in parallel.
+
 ## Idées
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.

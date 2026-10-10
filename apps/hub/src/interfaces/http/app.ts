@@ -31,10 +31,15 @@ import {
   createDeviceRepository,
   createUserRepository,
 } from "../../infrastructure/db/repositories.js";
+import type { PrinterGateway } from "../../application/printer-gateway.js";
 import { createOrderingStore } from "../../infrastructure/db/ordering-store.js";
+import { FakePrinterGateway } from "../../infrastructure/printing/fake-gateway.js";
+import { EscPosNetworkGateway } from "../../infrastructure/printing/network-gateway.js";
+import { PrintService } from "../../infrastructure/printing/print-service.js";
 import { attachRealtime } from "../realtime/hub.js";
 import { AppError, errorBody } from "./errors.js";
 import { registerOrderRoutes } from "./orders.js";
+import { registerPrintRoutes } from "./printing.js";
 
 const REDACT_PATHS = [
   "pin",
@@ -71,9 +76,12 @@ export interface BuildAppDeps {
   config: AppConfig;
   clock?: Clock;
   logger?: FastifyServerOptions["logger"];
+  printerGateway?: PrinterGateway;
 }
 
-export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
+export async function buildApp(
+  deps: BuildAppDeps,
+): Promise<FastifyInstance & { printing: PrintService }> {
   const clock = deps.clock ?? systemClock;
   const app = Fastify({
     logger: loggerOptions(deps.logger),
@@ -226,6 +234,27 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   );
 
   const realtime = attachRealtime(app, auth, deps.config.corsOrigins);
+  const gateway =
+    deps.printerGateway ??
+    (deps.config.nodeEnv === "test" ? new FakePrinterGateway() : new EscPosNetworkGateway());
+  const printing = new PrintService(
+    deps.sql,
+    gateway,
+    clock,
+    {
+      siteId: deps.config.siteId,
+      columns: deps.config.printColumns,
+      connectTimeoutMs: deps.config.printConnectTimeoutMs,
+      writeTimeoutMs: deps.config.printWriteTimeoutMs,
+      maxAttempts: deps.config.printMaxAttempts,
+    },
+    (events) => realtime.publish(events),
+  );
+  await printing.recoverInterrupted();
+  if (deps.config.nodeEnv !== "test") {
+    const timer = setInterval(() => printing.kick(), 1000);
+    app.addHook("onClose", async () => clearInterval(timer));
+  }
   registerOrderRoutes(app, {
     auth,
     orders: createOrderingStore(deps.sql, {
@@ -236,9 +265,18 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     clock,
     authenticate,
     requirePermission,
+    onCommitted: () => printing.kick(),
+  });
+  registerPrintRoutes(app, {
+    printing,
+    gateway,
+    columns: deps.config.printColumns,
+    connectTimeoutMs: deps.config.printConnectTimeoutMs,
+    writeTimeoutMs: deps.config.printWriteTimeoutMs,
+    requirePermission,
   });
 
-  return app;
+  return Object.assign(app, { printing }) as FastifyInstance & { printing: PrintService };
 
   async function authenticate(request: FastifyRequest): Promise<void> {
     try {

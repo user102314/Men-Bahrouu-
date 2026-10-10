@@ -22,6 +22,13 @@
       "when": 1791644804862,
       "tag": "0002_clever_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791645714865,
+      "tag": "0003_fat_clint_barton",
+      "breakpoints": true
     }
   ]
 }

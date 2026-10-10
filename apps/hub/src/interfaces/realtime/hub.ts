@@ -3,10 +3,15 @@ import type { FastifyInstance } from "fastify";
 import { Server } from "socket.io";
 
 import type { AuthService } from "../../application/auth-service.js";
-import type { RealtimeMessage } from "../../infrastructure/db/ordering-store.js";
+
+export interface LiveEvent {
+  name: string;
+  serverId: string;
+  payload: unknown;
+}
 
 export interface RealtimeHub {
-  publish(messages: readonly RealtimeMessage[]): void;
+  publish(messages: readonly LiveEvent[]): void;
 }
 
 export function attachRealtime(
@@ -54,7 +59,7 @@ export function attachRealtime(
   });
 
   return {
-    publish(messages) {
+    publish(messages: readonly LiveEvent[]) {
       for (const message of messages) {
         if (message.name === "table.updated") {
           io.to("role:WAITER")

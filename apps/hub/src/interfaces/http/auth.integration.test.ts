@@ -38,6 +38,10 @@ const config: AppConfig = {
   lockoutAttempts: 5,
   lockoutSeconds: 300,
   businessDayCutoffHour: 5,
+  printColumns: 48,
+  printConnectTimeoutMs: 2000,
+  printWriteTimeoutMs: 2000,
+  printMaxAttempts: 5,
   nodeEnv: "test",
   version: "test",
 };

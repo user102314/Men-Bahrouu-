@@ -11,3 +11,4 @@ Thumbs.db
 .turbo/
 *.tsbuildinfo
 .vite/
+tools/fake-printer/out/
