@@ -35,6 +35,10 @@ Authorization header: `Bearer` token. Floor routes also need the device that was
 | `POST /products/reorder` | `catalog.edit` |
 | `PATCH /products/:id/availability` | `catalog.availability` |
 | `GET /admin/products` | `catalog.edit` |
+| `GET /admin/categories` | `catalog.edit` |
+| `GET /admin/stations` | `printer.manage` |
+| `GET /admin/printers` | `printer.manage` |
+| `GET /products/:id/ingredients` | `stock.manage` |
 | `POST /tables` | `settings.edit` |
 | `PATCH /tables/:id` | `settings.edit` |
 | `POST /tables/zones` | `settings.edit` |
@@ -46,7 +50,15 @@ Authorization header: `Bearer` token. Floor routes also need the device that was
 
 `POST /categories` body: `{ "id", "nameFr", "nameAr", "stationId" }`. Response `201` echoes the category. Changing a category's station does not rewrite `order_items.station_id`.
 
+`PATCH /categories/:id` may set `isActive`. There is no delete. `GET /admin/categories` returns every category, including inactive ones, with `station_id`, `station_kind`, `is_active`, and `sort_order`.
+
+`GET /admin/stations` returns `id`, `kind`, `name`, `printer_id`, `fallback_station_id`. `GET /admin/printers` returns `id`, `name`, `host`, `port`, `paper_width_mm`, `is_active`. `GET /printers/status` stays the live probe.
+
+`GET /products/:id/ingredients` returns `{ ingredients: [{ stock_item_id, quantity_base }] }`. `PUT /products/:id/ingredients` still replaces the recipe.
+
 `PATCH /products/:id` body may include `priceMillimes`, `isActive`, `confirmHighPrice`. There is no delete. `isActive: false` hides the product from sale setup; `isAvailable` is the 86 (épuisé) flag.
+
+`GET /tables` adds `isActive`. `GET /devices` adds `lastSeenAt` (ISO time or null).
 
 `PATCH /products/:id/availability` body: `{ "isAvailable": false }`. Publishes `catalog.updated`.
 

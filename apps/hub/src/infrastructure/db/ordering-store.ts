@@ -1015,9 +1015,9 @@ async function catalog(sql: postgres.Sql, siteId: string) {
 
 async function listTables(sql: postgres.Sql, siteId: string, actor: Actor) {
   const tables = await sql<
-    { id: string; label: string; zone: string; seats: number; status: TableStatus }[]
+    { id: string; label: string; zone: string; seats: number; status: TableStatus; is_active: boolean }[]
   >`
-    select id, label, zone, seats, status from floor_tables where site_id = ${siteId} order by label
+    select id, label, zone, seats, status, is_active from floor_tables where site_id = ${siteId} order by label
   `;
   const open = await sql<{ id: string; table_id: string; server_id: string; opened_at: Date | string }[]>`
     select id, table_id, server_id, opened_at from orders
@@ -1041,6 +1041,7 @@ async function listTables(sql: postgres.Sql, siteId: string, actor: Actor) {
         zone: table.zone,
         seats: table.seats,
         status: table.status,
+        isActive: table.is_active,
         openOrderId,
         occupiedSince: order ? iso(order.opened_at) : null,
         ownedByMe: order ? order.server_id === actor.id : false,

@@ -32,6 +32,7 @@ export interface StoredDevice {
   name: string;
   type: DeviceType;
   isActive: boolean;
+  lastSeenAt: string | null;
 }
 
 export interface DeviceRepository {

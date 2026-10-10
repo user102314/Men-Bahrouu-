@@ -129,6 +129,19 @@ export function registerAdminRoutes(
     return { id: params.id, isAvailable: body.isAvailable };
   });
   app.get("/admin/products", { preHandler: permit("catalog.edit") }, async () => ({ products: await admin.listProducts() }));
+  app.get("/admin/categories", { preHandler: permit("catalog.edit") }, async () => ({
+    categories: await admin.listCategories(),
+  }));
+  app.get("/admin/stations", { preHandler: permit("printer.manage") }, async () => ({
+    stations: await admin.listStations(),
+  }));
+  app.get("/admin/printers", { preHandler: permit("printer.manage") }, async () => ({
+    printers: await admin.listPrinters(),
+  }));
+  app.get("/products/:id/ingredients", { preHandler: permit("stock.manage") }, async (request) => {
+    const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+    return { ingredients: await admin.getRecipe(params.id) };
+  });
 
   app.post("/tables", { preHandler: permit("settings.edit") }, async (request, reply) => {
     const created = await run(() => admin.createTable(actor(request), parse(createTableSchema, request.body)));

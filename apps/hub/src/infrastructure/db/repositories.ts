@@ -29,6 +29,7 @@ interface DeviceRow {
   name: string;
   type: DeviceType;
   is_active: boolean;
+  last_seen_at?: Date | string | null;
 }
 
 export function createUserRepository(sql: postgres.Sql): UserRepository {
@@ -120,7 +121,7 @@ export function createDeviceRepository(sql: postgres.Sql): DeviceRepository {
     },
     async list(siteId) {
       const rows = await sql<DeviceRow[]>`
-        select id, site_id, name, type, is_active from devices where site_id = ${siteId} order by name
+        select id, site_id, name, type, is_active, last_seen_at from devices where site_id = ${siteId} order by name
       `;
       return rows.flatMap((row) => {
         const device = mapDevice(row);
@@ -197,6 +198,7 @@ function mapDevice(row: DeviceRow | undefined): StoredDevice | null {
     name: row.name,
     type: row.type,
     isActive: row.is_active,
+    lastSeenAt: row.last_seen_at == null ? null : new Date(row.last_seen_at).toISOString(),
   };
 }
 

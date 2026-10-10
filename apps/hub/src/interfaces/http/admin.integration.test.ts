@@ -116,6 +116,25 @@ describe("admin permissions", () => {
 });
 
 describe("catalog prices and staff", () => {
+  it("lists categories, stations, printers, and a recipe for the admin desk", async () => {
+    const categories = await call("GET", "/admin/categories", adminJwt);
+    expect(categories.statusCode).toBe(200);
+    expect((categories.json() as { categories: { id: string }[] }).categories.some((row) => row.id === drinksId)).toBe(true);
+    const hidden = await call("PATCH", `/categories/${drinksId}`, adminJwt, { isActive: false });
+    expect(hidden.statusCode).toBe(200);
+    const stations = await call("GET", "/admin/stations", adminJwt);
+    expect(stations.statusCode).toBe(200);
+    expect((stations.json() as { stations: { id: string }[] }).stations.some((row) => row.id === barStationId)).toBe(true);
+    const printers = await call("GET", "/admin/printers", adminJwt);
+    expect((printers.json() as { printers: { id: string }[] }).printers.some((row) => row.id === barPrinterId)).toBe(true);
+    const recipe = await call("GET", `/products/${coffeeId}/ingredients`, adminJwt);
+    expect(recipe.statusCode).toBe(200);
+    expect(Array.isArray((recipe.json() as { ingredients: unknown }).ingredients)).toBe(true);
+    const waiter = await call("GET", "/admin/categories", waiterJwt);
+    expect(waiter.statusCode).toBe(403);
+    await call("PATCH", `/categories/${drinksId}`, adminJwt, { isActive: true });
+  });
+
   it("audits a price change, leaves the sent order untouched, and demands confirmation at 1000 TND", async () => {
     const created = await call("POST", "/orders", waiterJwt, {
       id: newId(),

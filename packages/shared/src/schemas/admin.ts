@@ -21,7 +21,10 @@ export const createCategorySchema = z.strictObject({
   nameAr: z.string().trim().min(1).max(80),
   stationId: uuidSchema,
 });
-export const updateCategorySchema = createCategorySchema.omit({ id: true }).partial();
+export const updateCategorySchema = createCategorySchema
+  .omit({ id: true })
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
 export const reorderSchema = z.strictObject({
   ids: z.array(uuidSchema).min(1),
 });

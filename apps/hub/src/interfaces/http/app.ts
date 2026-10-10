@@ -204,6 +204,7 @@ export async function buildApp(
       name: device.name,
       type: device.type,
       isActive: device.isActive,
+      lastSeenAt: device.lastSeenAt,
     }));
   });
 

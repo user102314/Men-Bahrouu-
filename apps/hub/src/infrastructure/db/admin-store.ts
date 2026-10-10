@@ -54,7 +54,12 @@ export function createAdminStore(
     updateCategory: (
       actor: Actor,
       id: string,
-      patch: { nameFr?: string | undefined; nameAr?: string | undefined; stationId?: string | undefined },
+      patch: {
+        nameFr?: string | undefined;
+        nameAr?: string | undefined;
+        stationId?: string | undefined;
+        isActive?: boolean | undefined;
+      },
     ) => mutate(sql, (tx) => patchCategory(tx, siteId, actor, id, patch)),
     reorderCategories: (actor: Actor, ids: string[]) => mutate(sql, (tx) => reorder(tx, siteId, actor, "categories", ids)),
     createProduct: (
@@ -85,6 +90,31 @@ export function createAdminStore(
     reorderProducts: (actor: Actor, ids: string[]) => mutate(sql, (tx) => reorder(tx, siteId, actor, "products", ids)),
     setAvailability: (actor: Actor, id: string, isAvailable: boolean) =>
       mutate(sql, (tx) => setAvailability(tx, siteId, actor, id, isAvailable)),
+    listCategories: () =>
+      sql`
+        select c.id, c.name_fr, c.name_ar, c.station_id, s.kind as station_kind, c.is_active, c.sort_order
+        from categories c
+        join stations s on s.id = c.station_id
+        where c.site_id = ${siteId}
+        order by c.sort_order, c.name_fr
+      `,
+    listStations: () =>
+      sql`
+        select id, kind, name, printer_id, fallback_station_id
+        from stations where site_id = ${siteId} order by name
+      `,
+    listPrinters: () =>
+      sql`
+        select id, name, host, port, paper_width_mm, is_active
+        from printers where site_id = ${siteId} order by name
+      `,
+    getRecipe: (productId: string) =>
+      sql`
+        select i.stock_item_id, i.quantity_base
+        from product_ingredients i
+        join products p on p.id = i.product_id
+        where i.product_id = ${productId} and p.site_id = ${siteId}
+      `,
     listProducts: () =>
       sql`
         select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, is_available, is_active, sort_order
@@ -343,7 +373,12 @@ async function patchCategory(
   siteId: string,
   actor: Actor,
   id: string,
-  patch: { nameFr?: string | undefined; nameAr?: string | undefined; stationId?: string | undefined },
+  patch: {
+    nameFr?: string | undefined;
+    nameAr?: string | undefined;
+    stationId?: string | undefined;
+    isActive?: boolean | undefined;
+  },
 ): Promise<unknown> {
   const beforeRows = await tx<{ name_fr: string; station_id: string }[]>`
     select name_fr, station_id from categories where id = ${id} and site_id = ${siteId}
@@ -360,6 +395,7 @@ async function patchCategory(
       name_fr = coalesce(${patch.nameFr ?? null}, name_fr),
       name_ar = coalesce(${patch.nameAr ?? null}, name_ar),
       station_id = coalesce(${patch.stationId ?? null}, station_id),
+      is_active = coalesce(${patch.isActive ?? null}, is_active),
       updated_at = now()
     where id = ${id} and site_id = ${siteId}
   `;
