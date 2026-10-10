@@ -36,6 +36,7 @@ interface ClaimedJob {
 export class PrintService {
   private draining = false;
   private queued = false;
+  private idle: Promise<void> = Promise.resolve();
   readonly delivered: PrintLiveEvent[] = [];
 
   constructor(
@@ -67,7 +68,7 @@ export class PrintService {
       return;
     }
     this.draining = true;
-    void this.drain().finally(() => {
+    this.idle = this.drain().finally(() => {
       this.draining = false;
       if (this.queued) {
         this.queued = false;
@@ -77,7 +78,10 @@ export class PrintService {
   }
 
   async kickAndWait(): Promise<void> {
-    await this.drain();
+    this.kick();
+    do {
+      await this.idle;
+    } while (this.draining);
   }
 
   private async drain(): Promise<void> {

@@ -30,7 +30,7 @@ Socket.IO joins `site`, `role`, and `user` rooms. Order events go to the order's
 
 ## Printing
 
-Preparation tickets are ESC/POS text in code page PC858. Arabic names stay in the payload and are not drawn on the text ticket. The hub claims pending jobs with `FOR UPDATE SKIP LOCKED`, so two workers cannot print the same slip. A job left in `PRINTING` when the hub starts is set back to `PENDING`: a duplicate slip is preferred to a lost one. After five failures the job moves to the station's fallback printer once, then becomes `FAILED`. Same-printer jobs are sent one after another; different printers run in parallel.
+Preparation tickets are ESC/POS text in code page PC858. The degree sign uses byte `0xF8`. The ligature `œ` is printed as `oe` because that page has no glyph for it. Arabic names stay in the payload and are not drawn on the text ticket. The hub claims pending jobs with `FOR UPDATE SKIP LOCKED`, so two workers cannot print the same slip. A job left in `PRINTING` when the hub starts is set back to `PENDING`: a duplicate slip is preferred to a lost one. After five failures the job moves to the station's fallback printer once, then becomes `FAILED`. Same-printer jobs are sent one after another; different printers run in parallel.
 
 ## Idées
 

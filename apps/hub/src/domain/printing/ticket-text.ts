@@ -34,6 +34,7 @@ const PC858: Record<string, number> = {
   "£": 0x9c,
   Ø: 0x9d,
   "×": 0xd8,
+  "°": 0xf8,
   Ÿ: 0x9f,
   á: 0xa0,
   í: 0xa1,
@@ -158,6 +159,10 @@ function line(value: string, columns: number): Buffer {
 function encodePc858(value: string): Buffer {
   const bytes: number[] = [];
   for (const char of value) {
+    if (char === "œ" || char === "Œ") {
+      bytes.push(...(char === "œ" ? [0x6f, 0x65] : [0x4f, 0x45]));
+      continue;
+    }
     const code = char.codePointAt(0) ?? 0x3f;
     if (code >= 32 && code < 127) {
       bytes.push(code);

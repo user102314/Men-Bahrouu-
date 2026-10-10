@@ -21,8 +21,12 @@ describe("renderTicket", () => {
         48,
       ),
     );
+    expect(text).toContain("N° 12");
     expect(text).toContain("CUISINE");
     expect(text).toContain("1 x Café express");
+    expect(
+      decodeTicket(renderTicket({ ...ticket, lines: [{ quantity: 1, nameFr: "Brik à l'œuf" }] })),
+    ).toContain("1 x Brik à l'oeuf");
     expect(text).toContain("  serré");
     expect(text).toContain("13:00");
     expect(text).toContain("Mohamed");
