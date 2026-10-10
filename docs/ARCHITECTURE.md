@@ -14,11 +14,15 @@ Amounts are branded integer millimes. VAT is computed from a caller-supplied bas
 
 `can(role, permission)` is the server-side check. A cashier does not hold `cancellation.approve` or `order.discount`; `requiresAdminOverride` marks those two. The override flow itself is completed with the cancellation routes.
 
-## Database
+## HTTP
 
-PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` is append-only: a trigger rejects `UPDATE` and `DELETE`. The development seed refuses to run when `NODE_ENV=production`. Integration tests use a separate database, `resto_test`.
+Every error is `{ error: { code, message, details? }, requestId }`. Stable codes include `AUTH_INVALID`, `AUTH_LOCKED`, `DEVICE_NOT_ALLOWED`, `FORBIDDEN`, and `VALIDATION_ERROR`. Login never reveals whether an account exists. A waiter uses only an active tablet, a cashier only an active cashier PC, and a phone accepts only an admin. Session tokens last 12 hours for floor staff and 2 hours for an admin. Each authenticated request reloads the user and the device, so a revocation takes effect immediately. Logs redact `pin`, `password`, `authorization`, and `x-device-token`.
 
 ## Idées
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.
-- Revisit waiter/cashier device-type pairing if a floor tablet must also show cashier profiles.
+- Serialize failed-login increments with `SELECT FOR UPDATE` if two devices submit the same PIN at once.
+
+## Database
+
+PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` is append-only: a trigger rejects `UPDATE` and `DELETE`. The development seed refuses to run when `NODE_ENV=production`. Integration tests use a separate database, `resto_test`.

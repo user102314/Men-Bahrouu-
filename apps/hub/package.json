@@ -1,8 +1,11 @@
 {
   "name": "@resto/hub",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node --env-file=../../.env --import tsx --watch src/main.ts",
+    "start": "node --env-file=../../.env --import tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file=../../.env ./node_modules/drizzle-kit/bin.cjs migrate",
@@ -12,9 +15,15 @@
   },
   "dependencies": {
     "@resto/shared": "workspace:*",
+    "@fastify/cors": "11.3.1",
+    "@fastify/helmet": "13.1.2",
+    "@fastify/jwt": "10.2.4",
+    "@fastify/rate-limit": "11.2.1",
     "argon2": "0.45.1",
     "drizzle-orm": "0.45.4",
-    "postgres": "3.4.9"
+    "fastify": "5.12.5",
+    "postgres": "3.4.9",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "24.19.1",

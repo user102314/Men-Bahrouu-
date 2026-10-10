@@ -12,7 +12,7 @@ Interface languages: French and Arabic (RTL). Timezone: `Africa/Tunis`. Currency
 4. Authorize every request on the server. Hiding a button is not enough. Each route declares the required permission.
 5. Sensitive actions write `audit_log` (actor, device, action, before/after): create, send, add, cancellation request, cancellation decision, reprint, failed login, price or role change.
 6. Do not physically delete orders, lines, or tickets. Change their status.
-7. Hash PINs and passwords with `argon2id`. Rate-limit login routes. Lock the account temporarily after N failures. No secrets in Git (`.env` ignored, `.env.example` committed). Session tokens stay short.
+7. Hash PINs and passwords with `argon2id`. Rate-limit login routes. Lock the account temporarily after N failures. No secrets in Git (`.env` ignored, `.env.example` committed). Floor sessions last 12 hours and admin sessions last 2 hours. Errors use `{ error: { code, message, details? }, requestId }`.
 8. Sending an order (status change + print jobs + audit + outbox) runs in a single database transaction.
 9. Do not add features outside the current step. Note improvements in `docs/ARCHITECTURE.md`, section « Idées ».
 

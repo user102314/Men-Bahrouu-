@@ -6,7 +6,7 @@ export function openDatabase(quietNotices = false): Sql {
     throw new Error("DATABASE_URL is required");
   }
   return postgres(url, {
-    max: 1,
+    max: 10,
     ...(quietNotices ? { onnotice: () => undefined } : {}),
   });
 }
