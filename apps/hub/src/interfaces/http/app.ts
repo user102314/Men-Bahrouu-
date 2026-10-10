@@ -94,7 +94,10 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   );
 
   await app.register(helmet);
-  await app.register(cors, { origin: [...deps.config.corsOrigins] });
+  await app.register(cors, {
+    origin: [...deps.config.corsOrigins],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Device-Token"],
+  });
   await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
   await app.register(jwt, { secret: deps.config.jwtSecret });
 

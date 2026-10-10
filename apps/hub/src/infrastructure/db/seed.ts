@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { DEFAULT_VAT_RATE_BP } from "../../config/vat.js";
 import { hashSecret } from "../auth/argon2-hasher.js";
 import { openDatabase } from "./connection.js";
+import { assertNotProduction } from "./dev-only.js";
 import { SEED_IDS, tableId } from "./seed-ids.js";
 import {
   categories,
@@ -25,8 +26,10 @@ const DEV_PINS = {
   youssef: "1357",
 } as const;
 
-if (process.env.NODE_ENV === "production") {
-  console.error("Refusing to seed while NODE_ENV=production.");
+try {
+  assertNotProduction(process.env.NODE_ENV, "seed the database");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }
 

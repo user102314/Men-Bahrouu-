@@ -224,16 +224,15 @@ export class AuthService {
   }
 
   private async recordFailure(user: StoredUser, now: Date): Promise<AuthFailure> {
-    const expired = user.lockedUntil !== null && user.lockedUntil <= now;
-    const failedAttempts = (expired ? 0 : user.failedAttempts) + 1;
-    const lockedUntil =
-      failedAttempts >= this.options.lockoutAttempts
-        ? new Date(now.getTime() + this.options.lockoutSeconds * 1000)
-        : null;
-    await this.users.setLoginFailure(user.id, failedAttempts, lockedUntil);
-    if (lockedUntil) {
-      await this.auditLock(user, lockedUntil);
-      return lockedResult(lockedUntil, now);
+    const updated = await this.users.incrementLoginFailure(
+      user.id,
+      now,
+      this.options.lockoutAttempts,
+      this.options.lockoutSeconds,
+    );
+    if (updated.lockedUntil && updated.failedAttempts >= this.options.lockoutAttempts) {
+      await this.auditLock(user, updated.lockedUntil);
+      return lockedResult(updated.lockedUntil, now);
     }
     await this.auditFailure(user.id, null, "user");
     return { ok: false, code: "AUTH_INVALID" };

@@ -59,12 +59,39 @@ export function createUserRepository(sql: postgres.Sql): UserRepository {
         return user ? [user] : [];
       });
     },
-    async setLoginFailure(id, failedAttempts, lockedUntil) {
-      await sql`
+    async incrementLoginFailure(id, now, lockoutAttempts, lockoutSeconds) {
+      const lockedUntil = new Date(now.getTime() + lockoutSeconds * 1000);
+      const rows = await sql<{ failed_attempts: number; locked_until: Date | string | null }[]>`
         update users
-        set failed_attempts = ${failedAttempts}, locked_until = ${lockedUntil}, updated_at = now()
+        set
+          failed_attempts = (
+            case
+              when locked_until is not null and locked_until <= ${now} then 0
+              else failed_attempts
+            end
+          ) + 1,
+          locked_until = case
+            when (
+              case
+                when locked_until is not null and locked_until <= ${now} then 0
+                else failed_attempts
+              end
+            ) + 1 >= ${lockoutAttempts}
+            then ${lockedUntil}
+            else case
+              when locked_until is not null and locked_until > ${now} then locked_until
+              else null
+            end
+          end,
+          updated_at = now()
         where id = ${id}
+        returning failed_attempts, locked_until
       `;
+      const row = rows[0];
+      if (!row) {
+        throw new Error("User not found while recording a login failure");
+      }
+      return { failedAttempts: row.failed_attempts, lockedUntil: asDate(row.locked_until) };
     },
     async resetLoginFailures(id) {
       await sql`

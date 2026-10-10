@@ -22,6 +22,7 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(5 * 60),
+  BUSINESS_DAY_CUTOFF_HOUR: z.coerce.number().int().min(0).max(23).default(5),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -35,6 +36,7 @@ export interface AppConfig {
   adminSessionSeconds: number;
   lockoutAttempts: number;
   lockoutSeconds: number;
+  businessDayCutoffHour: number;
   nodeEnv: "development" | "test" | "production";
   version: string;
 }
@@ -65,6 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, version = "0.0.0"): AppConfig
     adminSessionSeconds: parsed.data.SESSION_ADMIN_SECONDS,
     lockoutAttempts: parsed.data.LOCKOUT_ATTEMPTS,
     lockoutSeconds: parsed.data.LOCKOUT_SECONDS,
+    businessDayCutoffHour: parsed.data.BUSINESS_DAY_CUTOFF_HOUR,
     nodeEnv: parsed.data.NODE_ENV,
     version,
   };

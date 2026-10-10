@@ -37,6 +37,7 @@ const config: AppConfig = {
   adminSessionSeconds: 2 * 60 * 60,
   lockoutAttempts: 5,
   lockoutSeconds: 300,
+  businessDayCutoffHour: 5,
   nodeEnv: "test",
   version: "test",
 };
@@ -165,6 +166,36 @@ describe("authentication", () => {
     expect(allowed.json()).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: tabletId, type: "TABLET" })]),
     );
+  });
+
+  it("allows device and authorization headers for the configured origin", async () => {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/auth/login-pin",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,authorization,x-device-token",
+      },
+    });
+    expect(response.statusCode).toBe(204);
+    const allowed = String(response.headers["access-control-allow-headers"]).toLowerCase();
+    expect(allowed).toContain("authorization");
+    expect(allowed).toContain("x-device-token");
+    expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+  });
+
+  it("locks exactly once when ten wrong pins arrive together", async () => {
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () => loginPin("0000", tabletToken)),
+    );
+    const locked = responses.filter((response) => response.json().error.code === "AUTH_LOCKED");
+    expect(locked.length).toBeGreaterThan(0);
+    const rows = await sql<{ failed_attempts: number; locked_until: Date | null }[]>`
+      select failed_attempts, locked_until from users where id = ${waiterId}
+    `;
+    expect(rows[0]?.failed_attempts).toBe(10);
+    expect(rows[0]?.locked_until).not.toBeNull();
   });
 
   it("requires a device token to list profiles", async () => {

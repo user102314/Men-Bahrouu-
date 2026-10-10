@@ -17,7 +17,12 @@ export interface UserRepository {
   findById(id: string): Promise<StoredUser | null>;
   findByEmail(siteId: string, email: string): Promise<StoredUser | null>;
   listActiveStaff(siteId: string): Promise<StoredUser[]>;
-  setLoginFailure(id: string, failedAttempts: number, lockedUntil: Date | null): Promise<void>;
+  incrementLoginFailure(
+    id: string,
+    now: Date,
+    lockoutAttempts: number,
+    lockoutSeconds: number,
+  ): Promise<{ failedAttempts: number; lockedUntil: Date | null }>;
   resetLoginFailures(id: string): Promise<void>;
 }
 

@@ -18,11 +18,14 @@ Amounts are branded integer millimes. VAT is computed from a caller-supplied bas
 
 Every error is `{ error: { code, message, details? }, requestId }`. Stable codes include `AUTH_INVALID`, `AUTH_LOCKED`, `DEVICE_NOT_ALLOWED`, `FORBIDDEN`, and `VALIDATION_ERROR`. Login never reveals whether an account exists. A waiter uses only an active tablet, a cashier only an active cashier PC, and a phone accepts only an admin. Session tokens last 12 hours for floor staff and 2 hours for an admin. Each authenticated request reloads the user and the device, so a revocation takes effect immediately. Logs redact `pin`, `password`, `authorization`, and `x-device-token`.
 
+## Business day
+
+`businessDate` subtracts `BUSINESS_DAY_CUTOFF_HOUR` (default 5) from the current instant, then reads the calendar date in `Africa/Tunis`. A service that ends at 01:00 stays on the previous day. The cutoff is an absolute duration, so a daylight-saving gap can shift the boundary by one hour.
+
 ## Idées
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.
-- Serialize failed-login increments with `SELECT FOR UPDATE` if two devices submit the same PIN at once.
 
 ## Database
 
-PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` is append-only: a trigger rejects `UPDATE` and `DELETE`. The development seed refuses to run when `NODE_ENV=production`. Integration tests use a separate database, `resto_test`.
+PostgreSQL 16 is published on `127.0.0.1` only. Drizzle migrations live in `apps/hub/drizzle`. Foreign keys use `ON DELETE RESTRICT`. Amounts are integers. `order_counters` allocates the daily number with `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, so concurrent sends cannot duplicate it. `audit_log` is append-only: a trigger rejects `UPDATE` and `DELETE`. `pnpm db:reset` and `pnpm db:seed` refuse to run when `NODE_ENV=production`. A reset regenerates device tokens. Failed PIN attempts increment `failed_attempts` in one `UPDATE ... RETURNING`, and set `locked_until` in that same statement once the threshold is reached. Integration tests use a separate database, `resto_test`.
