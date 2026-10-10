@@ -17,6 +17,7 @@
     "db:test:prepare": "pnpm --filter @resto/hub db:test:prepare",
     "db:reset": "pnpm --filter @resto/hub db:reset",
     "fake-printers": "pnpm --filter @resto/hub exec tsx ../../tools/fake-printer/server.ts",
+    "demo:flow": "pnpm --filter @resto/hub exec tsx ../../tools/demo-flow.ts",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

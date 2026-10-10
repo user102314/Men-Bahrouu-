@@ -1,4 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 
@@ -45,6 +48,7 @@ const db = drizzle(sql);
 const existing = await sql<{ id: string }[]>`select id from sites where id = ${siteId}`;
 if (existing.length > 0) {
   console.log("Database already seeded. Device tokens are not printed again.");
+  console.log("If .devices.dev.json is missing, run pnpm db:reset on this development database.");
   await sql.end();
   process.exit(0);
 }
@@ -384,6 +388,16 @@ console.log(`WAITER Amira   PIN ${DEV_PINS.amira}`);
 console.log(`WAITER Youssef PIN ${DEV_PINS.youssef}`);
 console.log(`TABLET     ${SEED_IDS.tablet}  token ${tablet.token}`);
 console.log(`CASHIER_PC ${SEED_IDS.cashierPc}  token ${cashierPc.token}`);
+const devicesFile = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../../.devices.dev.json",
+);
+writeFileSync(
+  devicesFile,
+  `${JSON.stringify({ tablet: tablet.token, cashierPc: cashierPc.token }, null, 2)}\n`,
+  { encoding: "utf8", mode: 0o600 },
+);
+console.log(`Jetons de développement enregistrés dans ${devicesFile} (fichier ignoré par Git).`);
 console.log("Ces jetons d'appareils ne seront plus affichés.");
 console.log("");
 

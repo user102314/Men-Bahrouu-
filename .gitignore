@@ -12,3 +12,4 @@ Thumbs.db
 *.tsbuildinfo
 .vite/
 tools/fake-printer/out/
+.devices.dev.json
