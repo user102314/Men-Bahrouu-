@@ -1,0 +1,111 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { CancellationInbox } from "../../components/admin/CancellationInbox.js";
+import { DataTable, EmptyState, ErrorState, PageHeader, StatusBadge } from "../../components/admin/widgets.js";
+import { Money } from "../../components/Money.js";
+import { Button } from "../../components/ui/button.js";
+import { adminApi } from "../../lib/admin-api.js";
+import { api } from "../../lib/api.js";
+import { hubErrorText } from "../../lib/errors.js";
+
+const FILTERS = ["", "DRAFT", "SENT", "SERVED", "PAID", "CANCELLED"] as const;
+
+export function OrdersPage() {
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language.startsWith("ar") ? "ar" : "fr";
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<(typeof FILTERS)[number]>("");
+  const [selected, setSelected] = useState<string | null>(null);
+  const list = useQuery({
+    queryKey: ["admin", "orders", status],
+    queryFn: () => adminApi.orders(status || undefined),
+  });
+  const detail = useQuery({
+    queryKey: ["order", selected],
+    queryFn: () => api.order(selected ?? ""),
+    enabled: selected !== null,
+  });
+  const pending = useQuery({ queryKey: ["cancellations"], queryFn: () => api.cancellations() });
+  const decide = useMutation({
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api.decideCancellation(id, approve),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["cancellations"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["order"] });
+    },
+  });
+  const reprint = useMutation({
+    mutationFn: (orderId: string) => api.reprint(orderId),
+  });
+
+  return (
+    <div className="grid gap-4">
+      <PageHeader title={t("admin.orders")}>
+        <select
+          className="min-h-12 rounded-[12px] border border-line bg-fond px-3"
+          value={status}
+          onChange={(event) => setStatus(event.target.value as (typeof FILTERS)[number])}
+        >
+          {FILTERS.map((item) => (
+            <option key={item || "all"} value={item}>
+              {item ? t(`status.${item}`) : t("admin.live")}
+            </option>
+          ))}
+        </select>
+      </PageHeader>
+      {list.error ? <ErrorState>{hubErrorText(list.error, t)}</ErrorState> : null}
+      {list.data && list.data.orders.length === 0 ? <EmptyState>{t("admin.empty")}</EmptyState> : null}
+      {list.data && list.data.orders.length > 0 ? (
+        <DataTable>
+          <tbody>
+            {list.data.orders.map((order) => (
+              <tr key={order.id} className="border-t border-line">
+                <td className="p-3">{order.dailyNumber}</td>
+                <td className="p-3">{order.serverName}</td>
+                <td className="p-3">
+                  <StatusBadge status={order.status} />
+                </td>
+                <td className="p-3">
+                  <Money millimes={order.totalMillimes} locale={locale} />
+                </td>
+                <td className="p-3">
+                  <Button onClick={() => setSelected(order.id)}>{t("cashier.detail")}</Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </DataTable>
+      ) : null}
+      {list.data?.nextCursor ? <p className="text-sm">{t("admin.moreRows")}</p> : null}
+      {detail.data ? (
+        <section className="rounded-[14px] border border-line bg-surface p-4">
+          <h2 className="font-display text-2xl">#{detail.data.order.dailyNumber}</h2>
+          <ul className="mt-2">
+            {detail.data.order.items.map((item) => (
+              <li key={item.id} className="flex min-h-12 items-center justify-between gap-2">
+                <span>
+                  {item.quantity} × {item.productNameSnapshot}
+                </span>
+                <StatusBadge status={item.status} />
+              </li>
+            ))}
+          </ul>
+          <Button className="mt-3" onClick={() => reprint.mutate(detail.data.order.id)}>
+            {t("cashier.reprint")}
+          </Button>
+          {reprint.error ? <ErrorState>{hubErrorText(reprint.error, t)}</ErrorState> : null}
+        </section>
+      ) : null}
+      <section className="grid gap-3">
+        <h2 className="font-display text-2xl">{t("cashier.inbox")}</h2>
+        <CancellationInbox
+          rows={pending.data?.cancellations ?? []}
+          onDecide={(id, approve) => decide.mutate({ id, approve })}
+        />
+        {decide.error ? <ErrorState>{hubErrorText(decide.error, t)}</ErrorState> : null}
+      </section>
+    </div>
+  );
+}

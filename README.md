@@ -65,7 +65,7 @@ pnpm dev:info
 6. Mohamed demande l'annulation d'un seul café. Sonia refuse, ou accepte : sans le mot de passe admin l'acceptation est refusée (`OVERRIDE_REQUIRED`) ; avec `admin@resto.local` / `Admin#2026dev` le café est annulé et le bar imprime un ticket VOID.
 7. Mohamed demande l'addition. La table passe à « à encaisser ». Sonia encaisse 50 TND en espèces : la monnaie s'affiche, la commande est payée, la table redevient libre sur la tablette. L'écran rappelle que c'est un enregistrement de gestion, non fiscal.
 8. Arrêter l'imprimante cuisine, envoyer une commande : Sonia voit l'échec en rouge. Relancer l'imprimante, puis Réessayer.
-9. Avec le jeton téléphone, un serveur n'est pas proposé (l'appareil n'accepte pas le personnel de salle). L'admin Karim, e-mail et mot de passe, est accepté. `/admin` affiche « Bientôt ».
+9. Avec le jeton téléphone, un serveur n'est pas proposé (l'appareil n'accepte pas le personnel de salle). L'admin Karim, e-mail et mot de passe, ouvre `/admin` : tableau de bord, commandes, alertes, catalogue, réglages, imprimantes et appareils. Le stock, le personnel, la caisse et le journal restent au prochain lot.
 10. Arrêter le hub : la page affiche « Hub injoignable » et désactive l'envoi. Au retour du hub, la page se rétablit.
 
 Les jetons sont dans `.dev-device-tokens.json`. Ne pas les coller dans un ticket, un journal, ou Git.

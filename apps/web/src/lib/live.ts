@@ -49,6 +49,15 @@ export function connectLive(
       void queryClient.invalidateQueries({ queryKey: ["catalog"] });
       return;
     }
+    if (
+      event === "order.paid" ||
+      event === "stock.low" ||
+      event === "shift.closed" ||
+      event === "cancellation.requested" ||
+      event === "print.failed"
+    ) {
+      void queryClient.invalidateQueries({ queryKey: ["admin"] });
+    }
     if (event === "print.job.updated" || event === "print.failed") {
       void queryClient.invalidateQueries({ queryKey: ["print-jobs"] });
       void queryClient.invalidateQueries({ queryKey: ["printers"] });

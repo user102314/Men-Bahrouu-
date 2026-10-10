@@ -54,7 +54,7 @@ Cashier override: `can('CASHIER', 'cancellation.approve')` and `can('CASHIER', '
 
 Build domains 1–5 plus audit and sync: identity-access, catalog, floor, ordering, printing, `audit_log`, `sync_outbox` (no cloud send).
 
-The admin HTTP API covers catalogue edits, stock, purchases, inventory, staff, attendance, cash shifts, expenses, and management reports. Payments stay internal records. The waiter and cashier use `apps/web` against that hub. Admin screens are not built yet (`/admin` says they are coming).
+The admin HTTP API covers catalogue edits, stock, purchases, inventory, staff, attendance, cash shifts, expenses, and management reports. Payments stay internal records. The waiter and cashier use `apps/web` against that hub. `/admin` covers the service desk (dashboard, orders, alerts, catalogue, settings, printers, devices). Stock, purchases, staff, cash sessions, full reports, and audit screens are not built yet.
 
 ## How to work
 
@@ -62,7 +62,7 @@ Follow the numbered steps. After each step run `pnpm typecheck && pnpm lint && p
 
 ## Out of scope
 
-Admin screens, offline mode, local HTTPS, an installable PWA, Arabic ticket rendering, real cloud sync, split payments, cash-shift open/close on the floor, fiscal certification, and deployment onto the restaurant mini-PC.
+Stock, purchase, staff, cash-session, expense, full-report, and audit screens, offline mode, local HTTPS, an installable PWA, Arabic ticket rendering, real cloud sync, split payments, cash-shift open/close on the floor, fiscal certification, and deployment onto the restaurant mini-PC.
 
 ## Done when
 

@@ -36,9 +36,9 @@ Catalogue, stock, purchasing, staff, attendance, cash shifts, expenses, and repo
 
 ## Floor web
 
-`apps/web` is a Vite + React page for the waiter, the cashier, and a placeholder admin screen. It imports `@resto/shared` and checks hub JSON with Zod. The device token stays in `localStorage`. The access token stays in `sessionStorage` and is dropped when it expires. Strings go through i18next (French, with Arabic and `dir=rtl`). The hub URL is `VITE_HUB_URL` or `http://<page hostname>:3000`. In development the hub allows `localhost`, `127.0.0.1`, `192.168.*`, and `10.*` pages; production keeps the explicit `CORS_ORIGINS` list. `pnpm dev:info` prints local URLs and device names, never tokens. Tokens are written to gitignored `.devices.dev.json` and `.dev-device-tokens.json`.
+`apps/web` is a Vite + React page for the waiter, the cashier, and the admin desk (dashboard, orders, alerts, catalogue, settings, printers, devices). Stock, staff, cash, and audit screens are still later. It imports `@resto/shared` and checks hub JSON with Zod. The device token stays in `localStorage`. The access token stays in `sessionStorage` and is dropped when it expires. Strings go through i18next (French, with Arabic and `dir=rtl`). The hub URL is `VITE_HUB_URL` or `http://<page hostname>:3000`. In development the hub allows `localhost`, `127.0.0.1`, `192.168.*`, and `10.*` pages; production keeps the explicit `CORS_ORIGINS` list. `pnpm dev:info` prints local URLs and device names, never tokens. Tokens are written to gitignored `.devices.dev.json` and `.dev-device-tokens.json`.
 
-New runtime libraries, each for one job: React and React Router for the screens, TanStack Query for server data, socket.io-client for live updates, i18next for the two languages, Tailwind for the theme, Radix dialog plus `clsx` / `tailwind-merge` / `cva` for the modal and buttons, lucide for icons, framer-motion for a short entrance of a new cashier card, Zod to validate responses. No service worker.
+New runtime libraries, each for one job: React and React Router for the screens, TanStack Query for server data, socket.io-client for live updates, i18next for the two languages, Tailwind for the theme, Radix dialog plus `clsx` / `tailwind-merge` / `cva` for the modal and buttons, lucide for icons, framer-motion for a short entrance of a new cashier card, Zod to validate responses, Recharts for the management charts, react-hook-form for the product form, and `qrcode` for the one-time device setup code. No service worker.
 
 A page served at `http://<PC IP>` is not a secure context, so a service worker and a full install prompt are unavailable. `http://localhost` on the PC is a secure context. Local HTTPS comes later.
 
@@ -50,7 +50,7 @@ Preparation tickets are ESC/POS text in code page PC858. The degree sign uses by
 
 - Bind the dev Postgres port from an env var so two checkouts can run side by side.
 - Render Arabic ticket lines as images; the text renderer prints French only.
-- Admin screens on top of the admin API.
+- Stock, purchase, staff, cash, expense, report, and audit screens on top of the admin API.
 - Local HTTPS, then a real installable PWA. The current floor UI is a normal page.
 - Partial void of one unit on a line of several.
 
