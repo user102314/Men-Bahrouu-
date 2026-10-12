@@ -12,6 +12,8 @@ export interface Session {
 }
 
 const listeners = new Set<() => void>();
+let cachedRaw: string | null = null;
+let cachedSession: Session | null = null;
 
 function emit(): void {
   for (const listener of listeners) {
@@ -67,18 +69,33 @@ export function sessionFromToken(token: string, displayName: string): Session | 
 }
 
 export function loadSession(): Session | null {
-  const raw = browserStorage()?.getItem(KEY);
+  const raw = browserStorage()?.getItem(KEY) ?? null;
+  if (raw === cachedRaw) {
+    if (cachedSession && cachedSession.expiresAt <= Date.now()) {
+      browserStorage()?.removeItem(KEY);
+      cachedRaw = null;
+      cachedSession = null;
+      return null;
+    }
+    return cachedSession;
+  }
+  cachedRaw = raw;
   if (!raw) {
+    cachedSession = null;
     return null;
   }
   try {
     const session = JSON.parse(raw) as Session;
     if (session.expiresAt <= Date.now()) {
       browserStorage()?.removeItem(KEY);
+      cachedRaw = null;
+      cachedSession = null;
       return null;
     }
-    return session;
+    cachedSession = session;
+    return cachedSession;
   } catch {
+    cachedSession = null;
     return null;
   }
 }

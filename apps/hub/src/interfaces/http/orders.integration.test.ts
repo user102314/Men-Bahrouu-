@@ -179,7 +179,7 @@ describe("orders", () => {
     expect(decision.json().error.code).toBe("FORBIDDEN");
   });
 
-  it("requires an admin override before a cashier can approve a cancellation", async () => {
+  it("lets the cashier approve a cancellation without an admin", async () => {
     const created = await create(
       waiterJwt,
       newId(),
@@ -201,22 +201,7 @@ describe("orders", () => {
     });
     expect(request.statusCode).toBe(201);
     const cancellationId = request.json().cancellationId as string;
-    const missing = await decide(cancellationId, { approve: true });
-    expect(missing.statusCode).toBe(403);
-    expect(missing.json().error.code).toBe("OVERRIDE_REQUIRED");
-    const wrong = await decide(cancellationId, {
-      approve: true,
-      adminOverride: { email: "admin@resto.local", password: "Wrong#password" },
-    });
-    expect(wrong.statusCode).toBe(401);
-    const attempts = await sql<{ failed_attempts: number }[]>`
-      select failed_attempts from users where id = ${adminId}
-    `;
-    expect(attempts[0]?.failed_attempts).toBe(1);
-    const approved = await decide(cancellationId, {
-      approve: true,
-      adminOverride: { email: "admin@resto.local", password: adminPassword },
-    });
+    const approved = await decide(cancellationId, { approve: true });
     expect(approved.statusCode).toBe(200);
     expect(approved.json().status).toBe("CANCELLED");
     const table = await sql<
@@ -229,8 +214,54 @@ describe("orders", () => {
       select actor_user_id, after from audit_log where action = 'cancellation.decided'
     `;
     expect(audit[0]?.actor_user_id).toBe(cashierId);
-    expect(audit[0]?.after.overrideBy).toBe(adminId);
+    expect(audit[0]?.after.overrideBy ?? null).toBeNull();
     expect(audit[0]?.after.decidedBy).toBe(cashierId);
+  });
+
+  it("waits for the cashier before taking payment on a pending cancellation", async () => {
+    const created = await create(waiterJwt, newId(), [{ productId: coffeeId, quantity: 1 }]);
+    const order = created.json() as PublicOrder;
+    await app.inject({ method: "POST", url: `/orders/${order.id}/send`, headers: bearer(waiterJwt) });
+    const itemId = order.items[0]?.id ?? "";
+    const request = await app.inject({
+      method: "POST",
+      url: `/orders/${order.id}/cancellation-requests`,
+      headers: bearer(waiterJwt),
+      payload: { orderItemId: itemId, reason: "Client a changé d'avis" },
+    });
+    expect(request.statusCode).toBe(201);
+    const paid = await app.inject({
+      method: "POST",
+      url: `/orders/${order.id}/payments`,
+      headers: bearer(cashierJwt),
+      payload: { method: "CASH", tenderedMillimes: 2000 },
+    });
+    expect(paid.statusCode).toBe(409);
+    expect(paid.json().error.code).toBe("CANCELLATION_EXISTS");
+  });
+
+  it("accepts a cancellation left open after the order was paid", async () => {
+    const created = await create(waiterJwt, newId(), [
+      { productId: coffeeId, quantity: 1 },
+      { productId: couscousId, quantity: 1 },
+    ]);
+    const order = created.json() as PublicOrder;
+    await app.inject({ method: "POST", url: `/orders/${order.id}/send`, headers: bearer(waiterJwt) });
+    const coffee = order.items.find((item) => item.productId === coffeeId);
+    const request = await app.inject({
+      method: "POST",
+      url: `/orders/${order.id}/cancellation-requests`,
+      headers: bearer(waiterJwt),
+      payload: { orderItemId: coffee?.id, reason: "Client a changé d'avis" },
+    });
+    expect(request.statusCode).toBe(201);
+    await sql`update orders set status = 'PAID', closed_at = now() where id = ${order.id}`;
+    const approved = await decide(request.json().cancellationId as string, { approve: true });
+    expect(approved.statusCode).toBe(200);
+    const body = approved.json() as PublicOrder;
+    expect(body.status).toBe("PAID");
+    expect(body.totalMillimes).toBe(28000);
+    expect(body.items.find((item) => item.id === coffee?.id)?.status).toBe("VOIDED");
   });
 
   it("refuses a second open order on the same table", async () => {

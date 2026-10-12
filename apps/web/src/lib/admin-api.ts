@@ -1,3 +1,4 @@
+import type { Role } from "@resto/shared";
 import { z } from "zod";
 
 import { cancellationsSchema, hubRequest, ordersSchema, printJobsSchema } from "./api.js";
@@ -17,6 +18,23 @@ const settingsSchema = z.object({
   cashVarianceAlertMillimes: z.number().int(),
   priceCeilingMillimes: z.number().int(),
 });
+
+const dailyOfferSchema = z.object({
+  id: z.uuid(),
+  productId: z.uuid(),
+  nameFr: z.string(),
+  nameAr: z.string(),
+  priceMillimes: z.number().int(),
+  fromCatalog: z.boolean(),
+});
+
+const dailyMenuSchema = z.object({
+  businessDate: z.string(),
+  productIds: z.array(z.uuid()),
+  offers: z.array(dailyOfferSchema).default([]),
+});
+
+export type DailyOffer = z.infer<typeof dailyOfferSchema>;
 
 const periodSchema = z.object({
   revenueMillimes: z.number().int(),
@@ -43,6 +61,7 @@ const productRow = z.object({
   vat_rate_bp: z.number().int(),
   is_available: z.boolean(),
   is_active: z.boolean(),
+  image_type: z.string().nullable(),
   sort_order: z.number().int(),
 });
 
@@ -99,6 +118,7 @@ export type AdminProduct = {
   vatRateBp: number;
   isAvailable: boolean;
   isActive: boolean;
+  imageType: string | null;
   sortOrder: number;
 };
 
@@ -120,7 +140,8 @@ export const adminApi = {
   settings: () => hubRequest("/settings", settingsSchema),
   putSettings: (body: unknown) =>
     hubRequest("/settings", settingsSchema, { method: "PUT", body: JSON.stringify(body) }),
-  dashboard: (from: string, to: string) => hubRequest(query("/reports/dashboard", from, to), dashboardSchema),
+  dashboard: (from: string, to: string) =>
+    hubRequest(query("/reports/dashboard", from, to), dashboardSchema),
   byHour: (from: string, to: string) =>
     hubRequest(
       query("/reports/sales/by-hour", from, to),
@@ -143,7 +164,30 @@ export const adminApi = {
       z.object({
         notice: z.string(),
         products: z.array(
-          z.object({ name: z.string(), quantity: z.coerce.number(), revenue_millimes: z.coerce.number() }),
+          z.object({
+            name: z.string(),
+            quantity: z.coerce.number(),
+            revenue_millimes: z.coerce.number(),
+          }),
+        ),
+      }),
+    ),
+  productAnalysis: (from: string, to: string) =>
+    hubRequest(
+      query("/reports/product-analysis", from, to),
+      z.object({
+        notice: z.string(),
+        products: z.array(
+          z.object({
+            productId: z.uuid(),
+            name: z.string(),
+            kind: z.enum(["BAR", "KITCHEN"]),
+            soldQuantity: z.coerce.number().int(),
+            revenueMillimes: z.coerce.number().int(),
+            voidedQuantity: z.coerce.number().int(),
+            voidedMillimes: z.coerce.number().int(),
+            unitCostMillimes: z.number().int().nullable(),
+          }),
         ),
       }),
     ),
@@ -153,7 +197,11 @@ export const adminApi = {
       z.object({
         notice: z.string(),
         methods: z.array(
-          z.object({ method: z.string(), amount_millimes: z.coerce.number(), count: z.coerce.number() }),
+          z.object({
+            method: z.string(),
+            amount_millimes: z.coerce.number(),
+            count: z.coerce.number(),
+          }),
         ),
       }),
     ),
@@ -163,8 +211,43 @@ export const adminApi = {
       z.object({
         notice: z.string(),
         stations: z.array(
-          z.object({ kind: z.string(), quantity: z.coerce.number(), revenue_millimes: z.coerce.number() }),
+          z.object({
+            kind: z.string(),
+            quantity: z.coerce.number(),
+            revenue_millimes: z.coerce.number(),
+          }),
         ),
+      }),
+    ),
+  voids: (from: string, to: string) =>
+    hubRequest(
+      query("/reports/voids", from, to),
+      z.object({
+        notice: z.string(),
+        voids: z.array(
+          z.object({
+            id: z.string(),
+            reason: z.string(),
+            business_date: z.coerce.string(),
+          }),
+        ),
+      }),
+    ),
+  dailyClose: (from: string, to: string) =>
+    hubRequest(
+      query("/reports/daily-close", from, to),
+      z.object({
+        notice: z.string(),
+        methods: z.array(
+          z.object({
+            method: z.string(),
+            amount_millimes: z.coerce.number(),
+            count: z.coerce.number(),
+          }),
+        ),
+        vatMillimes: z.coerce.number(),
+        voidCount: z.coerce.number(),
+        voidValueMillimes: z.coerce.number(),
       }),
     ),
   foodCost: () =>
@@ -182,6 +265,21 @@ export const adminApi = {
         ),
       }),
     ),
+  dailySpecials: () => hubRequest("/daily-specials", dailyMenuSchema),
+  saveDailyOffers: (
+    offers: {
+      id: string;
+      productId: string | null;
+      nameFr: string;
+      nameAr: string;
+      priceMillimes: number;
+      confirmHighPrice?: boolean;
+    }[],
+  ) =>
+    hubRequest("/daily-specials", dailyMenuSchema, {
+      method: "PUT",
+      body: JSON.stringify({ offers }),
+    }),
   products: async (): Promise<AdminProduct[]> => {
     const body = await hubRequest("/admin/products", z.object({ products: z.array(productRow) }));
     return body.products.map((row) => ({
@@ -193,6 +291,7 @@ export const adminApi = {
       vatRateBp: row.vat_rate_bp,
       isAvailable: row.is_available,
       isActive: row.is_active,
+      imageType: row.image_type,
       sortOrder: row.sort_order,
     }));
   },
@@ -201,13 +300,36 @@ export const adminApi = {
       method: creating ? "POST" : "PATCH",
       body: JSON.stringify(creating ? { id, ...(body as object) } : body),
     }),
+  saveProductImage: (
+    id: string,
+    body: { contentType: "image/jpeg" | "image/png" | "image/webp"; dataBase64: string },
+  ) =>
+    hubRequest(
+      `/products/${id}/image`,
+      z.object({ id: z.uuid(), imageType: z.string().nullable() }),
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
+    ),
+  removeProductImage: (id: string) =>
+    hubRequest(
+      `/products/${id}/image`,
+      z.object({ id: z.uuid(), imageType: z.string().nullable() }),
+      {
+        method: "DELETE",
+      },
+    ),
   availability: (id: string, isAvailable: boolean) =>
     hubRequest(`/products/${id}/availability`, z.unknown(), {
       method: "PATCH",
       body: JSON.stringify({ isAvailable }),
     }),
   categories: async (): Promise<AdminCategory[]> => {
-    const body = await hubRequest("/admin/categories", z.object({ categories: z.array(categoryRow) }));
+    const body = await hubRequest(
+      "/admin/categories",
+      z.object({ categories: z.array(categoryRow) }),
+    );
     return body.categories.map((row) => ({
       id: row.id,
       nameFr: row.name_fr,
@@ -224,7 +346,10 @@ export const adminApi = {
       body: JSON.stringify(creating ? { id, ...(body as object) } : body),
     }),
   reorderCategories: (ids: string[]) =>
-    hubRequest("/categories/reorder", z.unknown(), { method: "POST", body: JSON.stringify({ ids }) }),
+    hubRequest("/categories/reorder", z.unknown(), {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   stationList: async () => {
     const body = await hubRequest("/admin/stations", z.object({ stations: z.array(stationRow) }));
     return body.stations.map((row) => ({
@@ -254,14 +379,20 @@ export const adminApi = {
       body: JSON.stringify(creating ? { id, ...(body as object) } : body),
     }),
   testPrinter: (id: string) =>
-    hubRequest(`/printers/${id}/test`, z.object({ ok: z.boolean(), error: z.string().optional() }), {
-      method: "POST",
-    }),
+    hubRequest(
+      `/printers/${id}/test`,
+      z.object({ ok: z.boolean(), error: z.string().optional() }),
+      {
+        method: "POST",
+      },
+    ),
   recipe: (productId: string) =>
     hubRequest(
       `/products/${productId}/ingredients`,
       z.object({
-        ingredients: z.array(z.object({ stock_item_id: z.uuid(), quantity_base: z.number().int() })),
+        ingredients: z.array(
+          z.object({ stock_item_id: z.uuid(), quantity_base: z.number().int() }),
+        ),
       }),
     ),
   setRecipe: (productId: string, ingredients: { stockItemId: string; quantityBase: number }[]) =>
@@ -291,7 +422,10 @@ export const adminApi = {
       body: JSON.stringify(creating ? { id, ...(body as object) } : body),
     }),
   renameZone: (from: string, to: string) =>
-    hubRequest("/tables/zones", z.unknown(), { method: "POST", body: JSON.stringify({ from, to }) }),
+    hubRequest("/tables/zones", z.unknown(), {
+      method: "POST",
+      body: JSON.stringify({ from, to }),
+    }),
   devices: () => hubRequest("/devices", z.array(deviceSchema)),
   createDevice: (name: string, type: "TABLET" | "CASHIER_PC" | "PHONE" | "PERSONAL") =>
     hubRequest(
@@ -304,14 +438,78 @@ export const adminApi = {
       }),
       { method: "POST", body: JSON.stringify({ name, type }) },
     ),
-  revokeDevice: (id: string) => hubRequest(`/devices/${id}/revoke`, z.unknown(), { method: "POST" }),
+  revokeDevice: (id: string) =>
+    hubRequest(`/devices/${id}/revoke`, z.unknown(), { method: "POST" }),
   openShifts: () =>
-    hubRequest("/cash-shifts?status=OPEN", z.object({ shifts: z.array(z.object({ id: z.string(), status: z.string() })) })),
+    hubRequest(
+      "/cash-shifts?status=OPEN",
+      z.object({ shifts: z.array(z.object({ id: z.string(), status: z.string() })) }),
+    ),
   orders: (status?: string) =>
     hubRequest(status ? `/orders?limit=100&status=${status}` : "/orders?limit=100", ordersSchema),
   cancellations: () => hubRequest("/cancellation-requests?status=PENDING", cancellationsSchema),
   printJobs: () => hubRequest("/print-jobs", printJobsSchema),
+  users: async () => {
+    const body = await hubRequest(
+      "/users",
+      z.object({
+        users: z.array(
+          z.object({
+            id: z.uuid(),
+            display_name: z.string(),
+            role: z.enum(["ADMIN", "CASHIER", "WAITER"]),
+            email: z.string().nullable(),
+            is_active: z.boolean(),
+            has_pin: z.boolean(),
+            has_password: z.boolean(),
+          }),
+        ),
+      }),
+    );
+    return body.users.map((row) => ({
+      id: row.id,
+      displayName: row.display_name,
+      role: row.role,
+      email: row.email,
+      isActive: row.is_active,
+      hasPin: row.has_pin,
+      hasPassword: row.has_password,
+    }));
+  },
+  createUser: (input: {
+    id: string;
+    displayName: string;
+    role: Role;
+    email?: string;
+    password?: string;
+  }) =>
+    hubRequest("/users", z.object({ id: z.uuid(), pin: z.string().optional() }), {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateUser: (id: string, patch: { displayName?: string; email?: string }) =>
+    hubRequest(`/users/${id}`, z.unknown(), { method: "PATCH", body: JSON.stringify(patch) }),
+  setUserRole: (id: string, input: { role: Role; email?: string; password?: string }) =>
+    hubRequest(
+      `/users/${id}/role`,
+      z.object({
+        id: z.uuid(),
+        role: z.enum(["ADMIN", "CASHIER", "WAITER"]),
+        pin: z.string().optional(),
+      }),
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    ),
+  resetUserPin: (id: string) =>
+    hubRequest(`/users/${id}/reset-pin`, z.object({ pin: z.string() }), { method: "POST" }),
+  setUserActive: (id: string, active: boolean) =>
+    hubRequest(`/users/${id}/${active ? "reactivate" : "deactivate"}`, z.unknown(), {
+      method: "POST",
+    }),
 };
 
+export type StaffUser = Awaited<ReturnType<typeof adminApi.users>>[number];
 export type DashboardReport = z.infer<typeof dashboardSchema>;
 export type SiteSettingsView = z.infer<typeof settingsSchema>;

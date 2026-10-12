@@ -73,6 +73,7 @@ export const products = pgTable(
     vatRateBp: integer("vat_rate_bp").notNull(),
     isAvailable: boolean("is_available").notNull().default(true),
     isActive: boolean("is_active").notNull().default(true),
+    imageType: text("image_type"),
     sortOrder: integer("sort_order").notNull().default(0),
     ...timestampColumns(),
   },

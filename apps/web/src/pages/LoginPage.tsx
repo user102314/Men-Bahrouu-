@@ -6,7 +6,7 @@ import { Link, Navigate, useNavigate } from "react-router";
 import { PinPad } from "../components/PinPad.js";
 import { Button } from "../components/ui/button.js";
 import { api, type DeviceProfiles } from "../lib/api.js";
-import { useDeviceToken } from "../lib/device.js";
+import { clearDevice, useDeviceToken } from "../lib/device.js";
 import { hubErrorText } from "../lib/errors.js";
 import { homeFor, saveSession, sessionFromToken, useSession } from "../lib/session.js";
 
@@ -37,6 +37,12 @@ export function LoginPage() {
     const id = window.setTimeout(() => setShake(false), 400);
     return () => window.clearTimeout(id);
   }, [error]);
+
+  useEffect(() => {
+    if (device && profiles.isError) {
+      clearDevice();
+    }
+  }, [device, profiles.isError]);
 
   if (session) {
     return <Navigate to={homeFor(session.role)} replace />;
@@ -69,6 +75,8 @@ export function LoginPage() {
   const waiterBlocked =
     profiles.data?.device.type === "PHONE" &&
     profiles.data.profiles.every((profile) => profile.role === "ADMIN");
+  const deviceRejected = Boolean(device && profiles.isError);
+  const showAdminForm = admin || !device || deviceRejected;
 
   return (
     <section className="mx-auto grid max-w-3xl gap-5">
@@ -101,7 +109,7 @@ export function LoginPage() {
           </Button>
         </div>
       ) : null}
-      {profiles.error ? <p role="alert">{hubErrorText(profiles.error, t)}</p> : null}
+      {deviceRejected ? <p role="alert">{t("login.badDevice")}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {!admin && selected && selected.role !== "ADMIN" ? (
         <PinPad
@@ -122,7 +130,7 @@ export function LoginPage() {
           backspaceLabel={t("login.backspace")}
         />
       ) : null}
-      {admin || !device ? (
+      {showAdminForm ? (
         <form
           className="grid gap-3"
           onSubmit={(event) => {
@@ -156,6 +164,19 @@ export function LoginPage() {
             {t("login.submit")}
           </Button>
         </form>
+      ) : null}
+      {deviceRejected ? (
+        <Button
+          intent="danger"
+          onClick={() => {
+            clearDevice();
+            setSelected(null);
+            setAdmin(true);
+            setError(null);
+          }}
+        >
+          {t("setup.forget")}
+        </Button>
       ) : null}
       <Link className="inline-flex min-h-12 items-center" to="/setup">
         {t("login.setup")}

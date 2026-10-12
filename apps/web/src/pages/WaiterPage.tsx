@@ -14,6 +14,7 @@ import { clearDraft, readDraft, saveDraft } from "../lib/draft.js";
 import { hubErrorText } from "../lib/errors.js";
 import { queryClient } from "../lib/query.js";
 import { routingPreview, type StationKind } from "../lib/routing.js";
+import { useSession } from "../lib/session.js";
 import { minutesSince, tunisTime } from "../lib/time.js";
 
 const NOTE_PRESETS = [
@@ -32,6 +33,11 @@ function kindFor(catalog: Catalog | undefined, productId: string): StationKind {
   return "KITCHEN";
 }
 
+function tableNumber(label: string): number {
+  const match = /(\d+)/.exec(label);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
 function statusClass(status: FloorTable["status"]): string {
   if (status === "FREE") {
     return "border-olive text-olive";
@@ -44,6 +50,7 @@ function statusClass(status: FloorTable["status"]): string {
 
 export function WaiterPage() {
   const { t, i18n } = useTranslation();
+  const session = useSession();
   const link = useLink();
   const blocked = link === "unreachable";
   const locale = i18n.language.startsWith("ar") ? "ar" : "fr";
@@ -63,6 +70,7 @@ export function WaiterPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [noteItem, setNoteItem] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const [cancelItem, setCancelItem] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -154,7 +162,10 @@ export function WaiterPage() {
       })),
   );
   const zones = new Map<string, FloorTable[]>();
-  for (const table of tables.data?.tables ?? []) {
+  const floorTables = (tables.data?.tables ?? [])
+    .filter((table) => table.isActive !== false)
+    .sort((left, right) => tableNumber(left.label) - tableNumber(right.label) || left.label.localeCompare(right.label, "fr"));
+  for (const table of floorTables) {
     const list = zones.get(table.zone) ?? [];
     list.push(table);
     zones.set(table.zone, list);
@@ -164,7 +175,7 @@ export function WaiterPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 xl:hidden">
         {(["floor", "ticket", "mine"] as const).map((item) => (
           <Button key={item} intent={tab === item ? "primary" : "quiet"} onClick={() => setTab(item)}>
             {t(`waiter.${item}`)}
@@ -172,8 +183,9 @@ export function WaiterPage() {
         ))}
       </div>
       {message ? <p role="status">{message}</p> : null}
-      {tab === "floor" ? (
-        <div className="grid gap-4">
+      {tab === "mine" ? null : (
+      <div className="grid items-start gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_22rem]">
+      <div className={tab === "floor" ? "grid gap-4" : "hidden gap-4 xl:grid"}>
           <Button
             intent="accent"
             onClick={() => {
@@ -187,7 +199,7 @@ export function WaiterPage() {
           {[...zones.entries()].map(([zone, zoneTables]) => (
             <section key={zone} className="grid gap-3">
               <h2 className="text-2xl">{zone}</h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
                 {zoneTables.map((table) => (
                   <button
                     key={table.id}
@@ -215,9 +227,7 @@ export function WaiterPage() {
             </section>
           ))}
         </div>
-      ) : null}
-      {tab === "ticket" ? (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className={tab === "ticket" ? "contents" : "hidden xl:contents"}>
           <section className="grid gap-3">
             <label className="grid gap-2">
               {t("common.search")}
@@ -279,6 +289,11 @@ export function WaiterPage() {
           </section>
           <aside className="grid gap-3 rounded-[14px] border border-line bg-surface p-4">
             <h2 className="text-2xl">{t("waiter.ticket")}</h2>
+            {session ? (
+              <p className="text-sm">
+                {t("waiter.server")} · {session.displayName}
+              </p>
+            ) : null}
             <TicketPanel
               lines={lines}
               disabled={blocked || busy}
@@ -304,7 +319,11 @@ export function WaiterPage() {
                 }
                 void run(async () => remember(await api.deleteItem(order.id, id)));
               }}
-              onNote={setNoteItem}
+              onNote={(id) => {
+                const line = lines.find((item) => item.id === id);
+                setNoteDraft(line?.note ?? "");
+                setNoteItem(id);
+              }}
               onCancel={setCancelItem}
             />
             <p>
@@ -330,7 +349,8 @@ export function WaiterPage() {
             </Button>
           </aside>
         </div>
-      ) : null}
+      </div>
+      )}
       {tab === "mine" ? (
         <ul className="grid gap-3">
           {(orders.data?.orders ?? []).length === 0 ? <li>{t("waiter.emptyOrders")}</li> : null}
@@ -377,26 +397,49 @@ export function WaiterPage() {
           {t("waiter.send")}
         </Button>
       </Dialog>
-      <Dialog open={noteItem !== null} onOpenChange={(open) => !open && setNoteItem(null)} title={t("waiter.note")}>
+      <Dialog
+        open={noteItem !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setNoteItem(null);
+            setNoteDraft("");
+          }
+        }}
+        title={t("waiter.note")}
+      >
         <div className="flex flex-wrap gap-2">
           {NOTE_PRESETS.map((preset) => (
-            <Button
-              key={preset.id}
-              onClick={() => {
-                if (!order || !noteItem) {
-                  return;
-                }
-                const itemId = noteItem;
-                void run(async () => {
-                  remember(await api.updateItem(order.id, itemId, { note: preset.fr }));
-                  setNoteItem(null);
-                });
-              }}
-            >
+            <Button key={preset.id} intent={noteDraft === preset.fr ? "primary" : "quiet"} onClick={() => setNoteDraft(preset.fr)}>
               {t(`notes.${preset.id}`)}
             </Button>
           ))}
         </div>
+        <label className="mt-3 grid gap-2">
+          {t("waiter.note")}
+          <input
+            className="min-h-12 rounded-[12px] border border-line bg-fond px-3"
+            value={noteDraft}
+            onChange={(event) => setNoteDraft(event.target.value)}
+          />
+        </label>
+        <Button
+          className="mt-4"
+          intent="primary"
+          disabled={blocked || busy || !order || !noteItem || noteDraft.trim().length === 0}
+          onClick={() => {
+            if (!order || !noteItem) {
+              return;
+            }
+            const itemId = noteItem;
+            void run(async () => {
+              remember(await api.updateItem(order.id, itemId, { note: noteDraft.trim() }));
+              setNoteItem(null);
+              setNoteDraft("");
+            });
+          }}
+        >
+          {t("waiter.confirmNote")}
+        </Button>
       </Dialog>
       <Dialog
         open={cancelItem !== null}

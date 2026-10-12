@@ -10,6 +10,8 @@ describe("visibleNav", () => {
     const admin = visibleNav("ADMIN").map((item) => item.to);
     expect(admin).toContain("/admin");
     expect(admin).toContain("/admin/products");
+    expect(admin).toContain("/admin/daily");
+    expect(admin).toContain("/admin/staff");
     expect(admin).toContain("/admin/stock");
   });
 });

@@ -1,4 +1,5 @@
 import {
+  businessDate,
   can,
   attendanceRangeSchema,
   auditQuerySchema,
@@ -46,7 +47,13 @@ import { z, ZodError } from "zod";
 import type { Clock } from "../../domain/auth/clock.js";
 import { DomainError, domainHttp } from "../../domain/ordering/errors.js";
 import { createAdminStore } from "../../infrastructure/db/admin-store.js";
-import { buildReport, toCsv } from "../../infrastructure/db/reports.js";
+import {
+  decodeProductImage,
+  readProductImage,
+  removeProductImage,
+  writeProductImage,
+} from "../../infrastructure/files/product-images.js";
+import { buildReport, serviceProductLines, toCsv } from "../../infrastructure/db/reports.js";
 import type { RealtimeHub } from "../realtime/hub.js";
 import { AppError } from "./errors.js";
 
@@ -88,20 +95,85 @@ export function registerAdminRoutes(
     };
   };
 
+  app.get("/product-images/:id", async (request, reply) => {
+    const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+    const imageType = await admin.productImageType(params.id);
+    if (!imageType) {
+      return reply.status(404).send();
+    }
+    const bytes = await readProductImage(
+      params.id,
+      imageType as "image/jpeg" | "image/png" | "image/webp",
+    );
+    return reply.type(imageType).header("cache-control", "no-cache").send(bytes);
+  });
+
   app.get("/settings", { preHandler: permit("settings.edit") }, async () => admin.settings());
   app.put("/settings", { preHandler: permit("settings.edit") }, async (request) => {
-    const result = await run(() => admin.putSettings(actor(request), parse(settingsPutSchema, request.body)));
+    const result = await run(() =>
+      admin.putSettings(actor(request), parse(settingsPutSchema, request.body)),
+    );
     deps.realtime.publish(result.events);
     return result.settings;
   });
 
+  const dailyPutSchema = z
+    .strictObject({
+      productIds: z.array(z.uuid()).max(40).optional(),
+      offers: z
+        .array(
+          z.strictObject({
+            id: z.uuid(),
+            productId: z.uuid().nullable(),
+            nameFr: z.string().trim().min(1).max(80),
+            nameAr: z.string().trim().min(1).max(80),
+            priceMillimes: z.number().int().nonnegative(),
+            confirmHighPrice: z.boolean().optional(),
+          }),
+        )
+        .max(40)
+        .optional(),
+    })
+    .refine((value) => value.productIds !== undefined || value.offers !== undefined, {
+      message: "At least one field is required",
+    });
+
+  app.put("/daily-specials", { preHandler: permit("catalog.edit") }, async (request) => {
+    const body = parse(dailyPutSchema, request.body);
+    const offers = body.offers;
+    if (offers !== undefined) {
+      const saved = await run(() =>
+        admin.saveDailyOffers(actor(request), offers, deps.clock.now()),
+      );
+      deps.realtime.publish(saved.events);
+      return saved.menu;
+    }
+    const [current, products] = await Promise.all([admin.settings(), admin.listProducts()]);
+    const active = new Set(
+      (products as unknown as { id: string; is_active: boolean }[])
+        .filter((product) => product.is_active)
+        .map((product) => product.id),
+    );
+    const productIds = [...new Set(body.productIds ?? [])].filter((id) => active.has(id));
+    const today = businessDate(deps.clock.now(), current.businessDayCutoffHour);
+    const result = await run(() =>
+      admin.putSettings(actor(request), { dailySpecials: { businessDate: today, productIds } }),
+    );
+    deps.realtime.publish(result.events);
+    return { businessDate: today, productIds, offers: [] as never[] };
+  });
+
   app.post("/categories", { preHandler: permit("catalog.edit") }, async (request, reply) => {
-    const created = await run(() => admin.createCategory(actor(request), parse(createCategorySchema, request.body)));
+    const created = await run(() =>
+      admin.createCategory(actor(request), parse(createCategorySchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/categories/:id", { preHandler: permit("catalog.edit") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateCategory(actor(request), params.id, parse(updateCategorySchema, request.body)));
+    return run(() =>
+      admin.updateCategory(actor(request), params.id, parse(updateCategorySchema, request.body)),
+    );
   });
   app.post("/categories/reorder", { preHandler: permit("catalog.edit") }, async (request) => {
     const body = parse(reorderSchema, request.body);
@@ -109,26 +181,67 @@ export function registerAdminRoutes(
     return { ok: true };
   });
   app.post("/products", { preHandler: permit("catalog.edit") }, async (request, reply) => {
-    const created = await run(() => admin.createProduct(actor(request), parse(createProductSchema, request.body)));
+    const created = await run(() =>
+      admin.createProduct(actor(request), parse(createProductSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/products/:id", { preHandler: permit("catalog.edit") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateProduct(actor(request), params.id, parse(updateProductSchema, request.body)));
+    return run(() =>
+      admin.updateProduct(actor(request), params.id, parse(updateProductSchema, request.body)),
+    );
   });
   app.post("/products/reorder", { preHandler: permit("catalog.edit") }, async (request) => {
     const body = parse(reorderSchema, request.body);
     await run(() => admin.reorderProducts(actor(request), body.ids));
     return { ok: true };
   });
-  app.patch("/products/:id/availability", { preHandler: permit("catalog.availability") }, async (request) => {
+  app.put("/products/:id/image", { preHandler: permit("catalog.edit") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    const body = parse(availabilitySchema, request.body);
-    const event = await run(() => admin.setAvailability(actor(request), params.id, body.isAvailable));
-    deps.realtime.publish([event]);
-    return { id: params.id, isAvailable: body.isAvailable };
+    const body = parse(
+      z.strictObject({
+        contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataBase64: z.string().min(16).max(2_100_000),
+      }),
+      request.body,
+    );
+    let image: ReturnType<typeof decodeProductImage>;
+    try {
+      image = decodeProductImage(body.contentType, body.dataBase64);
+    } catch {
+      throw new AppError(400, "INVALID_IMAGE", "Image illisible");
+    }
+    await writeProductImage(params.id, image.type, image.bytes);
+    try {
+      return await run(() => admin.setProductImage(actor(request), params.id, image.type));
+    } catch (error) {
+      await removeProductImage(params.id);
+      throw error;
+    }
   });
-  app.get("/admin/products", { preHandler: permit("catalog.edit") }, async () => ({ products: await admin.listProducts() }));
+  app.delete("/products/:id/image", { preHandler: permit("catalog.edit") }, async (request) => {
+    const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+    const cleared = await run(() => admin.setProductImage(actor(request), params.id, null));
+    await removeProductImage(params.id);
+    return cleared;
+  });
+  app.patch(
+    "/products/:id/availability",
+    { preHandler: permit("catalog.availability") },
+    async (request) => {
+      const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+      const body = parse(availabilitySchema, request.body);
+      const event = await run(() =>
+        admin.setAvailability(actor(request), params.id, body.isAvailable),
+      );
+      deps.realtime.publish([event]);
+      return { id: params.id, isAvailable: body.isAvailable };
+    },
+  );
+  app.get("/admin/products", { preHandler: permit("catalog.edit") }, async () => ({
+    products: await admin.listProducts(),
+  }));
   app.get("/admin/categories", { preHandler: permit("catalog.edit") }, async () => ({
     categories: await admin.listCategories(),
   }));
@@ -143,13 +256,21 @@ export function registerAdminRoutes(
     return { ingredients: await admin.getRecipe(params.id) };
   });
 
-  app.post("/tables", { preHandler: permit("settings.edit") }, async (request, reply) => {
-    const created = await run(() => admin.createTable(actor(request), parse(createTableSchema, request.body)));
-    return reply.status(201).send(created);
-  });
+  app.post(
+    "/tables",
+    { preHandler: either("settings.edit", "shift.manage") },
+    async (request, reply) => {
+      const created = await run(() =>
+        admin.createTable(actor(request), parse(createTableSchema, request.body)),
+      );
+      return reply.status(201).send(created);
+    },
+  );
   app.patch("/tables/:id", { preHandler: permit("settings.edit") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateTable(actor(request), params.id, parse(updateTableSchema, request.body)));
+    return run(() =>
+      admin.updateTable(actor(request), params.id, parse(updateTableSchema, request.body)),
+    );
   });
   app.post("/tables/zones", { preHandler: permit("settings.edit") }, async (request) =>
     run(() => {
@@ -159,26 +280,38 @@ export function registerAdminRoutes(
   );
 
   app.post("/printers", { preHandler: permit("printer.manage") }, async (request, reply) => {
-    const created = await run(() => admin.createPrinter(actor(request), parse(createPrinterSchema, request.body)));
+    const created = await run(() =>
+      admin.createPrinter(actor(request), parse(createPrinterSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/printers/:id", { preHandler: permit("printer.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updatePrinter(actor(request), params.id, parse(updatePrinterSchema, request.body)));
+    return run(() =>
+      admin.updatePrinter(actor(request), params.id, parse(updatePrinterSchema, request.body)),
+    );
   });
   app.patch("/stations/:id", { preHandler: permit("printer.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateStation(actor(request), params.id, parse(updateStationSchema, request.body)));
+    return run(() =>
+      admin.updateStation(actor(request), params.id, parse(updateStationSchema, request.body)),
+    );
   });
 
-  app.get("/users", { preHandler: permit("staff.manage") }, async () => ({ users: await admin.listUsers() }));
+  app.get("/users", { preHandler: permit("staff.manage") }, async () => ({
+    users: await admin.listUsers(),
+  }));
   app.post("/users", { preHandler: permit("staff.manage") }, async (request, reply) => {
-    const created = await run(() => admin.createUser(actor(request), parse(createUserSchema, request.body)));
+    const created = await run(() =>
+      admin.createUser(actor(request), parse(createUserSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/users/:id", { preHandler: permit("staff.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateUser(actor(request), params.id, parse(updateUserSchema, request.body)));
+    return run(() =>
+      admin.updateUser(actor(request), params.id, parse(updateUserSchema, request.body)),
+    );
   });
   app.post("/users/:id/reset-pin", { preHandler: permit("staff.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
@@ -195,13 +328,17 @@ export function registerAdminRoutes(
   app.patch("/users/:id/role", { preHandler: permit("staff.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
     const body = parse(changeRoleSchema, request.body);
-    return run(() => admin.setRole(actor(request), params.id, body.role));
+    return run(() => admin.setRole(actor(request), params.id, body));
   });
 
-  app.post("/attendance/clock-in", { preHandler: permit("attendance.self") }, async (request, reply) => {
-    const created = await run(() => admin.clockIn(actor(request), deps.clock.now()));
-    return reply.status(201).send(created);
-  });
+  app.post(
+    "/attendance/clock-in",
+    { preHandler: permit("attendance.self") },
+    async (request, reply) => {
+      const created = await run(() => admin.clockIn(actor(request), deps.clock.now()));
+      return reply.status(201).send(created);
+    },
+  );
   app.post("/attendance/clock-out", { preHandler: permit("attendance.self") }, async (request) =>
     run(() => admin.clockOut(actor(request), deps.clock.now())),
   );
@@ -214,7 +351,9 @@ export function registerAdminRoutes(
   });
   app.patch("/attendance/:id", { preHandler: permit("attendance.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.editAttendance(actor(request), params.id, parse(editAttendanceSchema, request.body)));
+    return run(() =>
+      admin.editAttendance(actor(request), params.id, parse(editAttendanceSchema, request.body)),
+    );
   });
   app.get("/staff-shifts", { preHandler: permit("staff.manage") }, async (request) => {
     const query = parse(z.strictObject({ week: z.iso.date() }), request.query);
@@ -225,14 +364,20 @@ export function registerAdminRoutes(
     return run(() => admin.putStaffShifts(actor(request), body.weekStart, body.slots));
   });
 
-  app.get("/stock-items", { preHandler: permit("stock.manage") }, async () => ({ items: await admin.listStock() }));
+  app.get("/stock-items", { preHandler: permit("stock.manage") }, async () => ({
+    items: await admin.listStock(),
+  }));
   app.post("/stock-items", { preHandler: permit("stock.manage") }, async (request, reply) => {
-    const created = await run(() => admin.createStockItem(actor(request), parse(createStockItemSchema, request.body)));
+    const created = await run(() =>
+      admin.createStockItem(actor(request), parse(createStockItemSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/stock-items/:id", { preHandler: permit("stock.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateStockItem(actor(request), params.id, parse(updateStockItemSchema, request.body)));
+    return run(() =>
+      admin.updateStockItem(actor(request), params.id, parse(updateStockItemSchema, request.body)),
+    );
   });
   app.get("/stock-items/:id/movements", { preHandler: permit("stock.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
@@ -244,31 +389,51 @@ export function registerAdminRoutes(
     return run(() => admin.setRecipe(actor(request), params.id, body.ingredients));
   });
   app.post("/stock-movements", { preHandler: permit("stock.manage") }, async (request, reply) => {
-    const created = await run(() => admin.manualMovement(actor(request), parse(manualMovementSchema, request.body)));
+    const created = await run(() =>
+      admin.manualMovement(actor(request), parse(manualMovementSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
-  app.get("/stock/alerts", { preHandler: permit("stock.manage") }, async () => ({ items: await admin.stockAlerts() }));
-  app.post("/stock/inventories", { preHandler: permit("inventory.manage") }, async (request, reply) => {
-    const created = await run(() => admin.takeInventory(actor(request), parse(inventorySchema, request.body)));
-    return reply.status(201).send(created);
-  });
+  app.get("/stock/alerts", { preHandler: permit("stock.manage") }, async () => ({
+    items: await admin.stockAlerts(),
+  }));
+  app.post(
+    "/stock/inventories",
+    { preHandler: permit("inventory.manage") },
+    async (request, reply) => {
+      const created = await run(() =>
+        admin.takeInventory(actor(request), parse(inventorySchema, request.body)),
+      );
+      return reply.status(201).send(created);
+    },
+  );
 
-  app.get("/suppliers", { preHandler: permit("purchase.manage") }, async () => ({ suppliers: await admin.listSuppliers() }));
+  app.get("/suppliers", { preHandler: permit("purchase.manage") }, async () => ({
+    suppliers: await admin.listSuppliers(),
+  }));
   app.post("/suppliers", { preHandler: permit("purchase.manage") }, async (request, reply) => {
-    const created = await run(() => admin.createSupplier(actor(request), parse(supplierSchema, request.body)));
+    const created = await run(() =>
+      admin.createSupplier(actor(request), parse(supplierSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/suppliers/:id", { preHandler: permit("purchase.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateSupplier(actor(request), params.id, parse(updateSupplierSchema, request.body)));
+    return run(() =>
+      admin.updateSupplier(actor(request), params.id, parse(updateSupplierSchema, request.body)),
+    );
   });
   app.post("/purchases", { preHandler: permit("purchase.manage") }, async (request, reply) => {
-    const created = await run(() => admin.createPurchase(actor(request), parse(createPurchaseSchema, request.body)));
+    const created = await run(() =>
+      admin.createPurchase(actor(request), parse(createPurchaseSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/purchases/:id", { preHandler: permit("purchase.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updatePurchase(actor(request), params.id, parse(updatePurchaseSchema, request.body)));
+    return run(() =>
+      admin.updatePurchase(actor(request), params.id, parse(updatePurchaseSchema, request.body)),
+    );
   });
   app.post("/purchases/:id/receive", { preHandler: permit("purchase.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
@@ -278,41 +443,66 @@ export function registerAdminRoutes(
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
     return run(() => admin.cancelPurchase(actor(request), params.id));
   });
-  app.post("/purchases/:id/mark-paid", { preHandler: permit("purchase.manage") }, async (request) => {
-    const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.markPurchasePaid(actor(request), params.id));
-  });
+  app.post(
+    "/purchases/:id/mark-paid",
+    { preHandler: permit("purchase.manage") },
+    async (request) => {
+      const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+      return run(() => admin.markPurchasePaid(actor(request), params.id));
+    },
+  );
 
   app.post("/expenses", { preHandler: permit("expense.manage") }, async (request, reply) => {
-    const created = await run(() => admin.createExpense(actor(request), parse(expenseSchema, request.body)));
+    const created = await run(() =>
+      admin.createExpense(actor(request), parse(expenseSchema, request.body)),
+    );
     return reply.status(201).send(created);
   });
   app.patch("/expenses/:id", { preHandler: permit("expense.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    return run(() => admin.updateExpense(actor(request), params.id, parse(updateExpenseSchema, request.body)));
+    return run(() =>
+      admin.updateExpense(actor(request), params.id, parse(updateExpenseSchema, request.body)),
+    );
   });
   app.get("/expenses", { preHandler: permit("expense.manage") }, async (request) => {
     const query = parse(
-      z.strictObject({ from: z.iso.date(), to: z.iso.date(), category: expenseCategorySchema.optional() }),
+      z.strictObject({
+        from: z.iso.date(),
+        to: z.iso.date(),
+        category: expenseCategorySchema.optional(),
+      }),
       request.query,
     );
     return { expenses: await admin.listExpenses(query.from, query.to, query.category) };
   });
 
   app.post("/cash-shifts/open", { preHandler: permit("shift.manage") }, async (request, reply) => {
-    const result = await run(() => admin.openShift(actor(request), parse(openShiftSchema, request.body), deps.clock.now()));
+    const result = await run(() =>
+      admin.openShift(actor(request), parse(openShiftSchema, request.body), deps.clock.now()),
+    );
     deps.realtime.publish(result.events);
     return reply.status(201).send(result.shift);
   });
-  app.post("/cash-shifts/:id/cash-movements", { preHandler: permit("shift.manage") }, async (request, reply) => {
-    const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    const created = await run(() => admin.cashMovement(actor(request), params.id, parse(cashMovementSchema, request.body)));
-    return reply.status(201).send(created);
-  });
+  app.post(
+    "/cash-shifts/:id/cash-movements",
+    { preHandler: permit("shift.manage") },
+    async (request, reply) => {
+      const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+      const created = await run(() =>
+        admin.cashMovement(actor(request), params.id, parse(cashMovementSchema, request.body)),
+      );
+      return reply.status(201).send(created);
+    },
+  );
   app.post("/cash-shifts/:id/close", { preHandler: permit("shift.manage") }, async (request) => {
     const params = parse(z.strictObject({ id: z.uuid() }), request.params);
     const result = await run(() =>
-      admin.closeShift(actor(request), params.id, parse(closeShiftSchema, request.body), deps.clock.now()),
+      admin.closeShift(
+        actor(request),
+        params.id,
+        parse(closeShiftSchema, request.body),
+        deps.clock.now(),
+      ),
     );
     deps.realtime.publish(result.events);
     return { expectedMillimes: result.expectedMillimes, varianceMillimes: result.varianceMillimes };
@@ -322,6 +512,87 @@ export function registerAdminRoutes(
     const body = parse(shiftNoteSchema, request.body);
     return run(() => admin.noteShift(actor(request), params.id, body.note));
   });
+  app.get("/service-recette", { preHandler: permit("shift.manage") }, async () => {
+    const current = await admin.settings();
+    return recetteReport(current.serviceRecette, deps.clock.now());
+  });
+  app.post("/service-recette/open", { preHandler: permit("shift.manage") }, async (request) => {
+    const current = await admin.settings();
+    if (current.serviceRecette.status === "OPEN") {
+      throw new AppError(409, "INVALID_TRANSITION", "Morning service is already open");
+    }
+    const now = deps.clock.now();
+    const next = {
+      status: "OPEN" as const,
+      businessDate: businessDate(now, current.businessDayCutoffHour),
+      openedAt: now.toISOString(),
+      closedAt: null,
+    };
+    const saved = await run(() => admin.putSettings(actor(request), { serviceRecette: next }));
+    deps.realtime.publish(saved.events);
+    return recetteReport(next, now);
+  });
+  app.post("/service-recette/close", { preHandler: permit("shift.manage") }, async (request) => {
+    const current = await admin.settings();
+    if (current.serviceRecette.status !== "OPEN" || current.serviceRecette.openedAt.length === 0) {
+      throw new AppError(409, "INVALID_TRANSITION", "Morning service is not open");
+    }
+    const now = deps.clock.now();
+    const next = {
+      ...current.serviceRecette,
+      status: "CLOSED" as const,
+      closedAt: now.toISOString(),
+    };
+    const saved = await run(() => admin.putSettings(actor(request), { serviceRecette: next }));
+    deps.realtime.publish(saved.events);
+    return recetteReport(next, now);
+  });
+
+  async function recetteReport(
+    service: {
+      status: "OPEN" | "CLOSED";
+      businessDate: string;
+      openedAt: string;
+      closedAt: string | null;
+    },
+    now: Date,
+  ) {
+    if (service.openedAt.length === 0) {
+      return {
+        notice: "Rapport de gestion, pas un document fiscal",
+        service: null,
+        products: [],
+        totals: {
+          all: { quantity: 0, revenueMillimes: 0 },
+          bar: { quantity: 0, revenueMillimes: 0 },
+          kitchen: { quantity: 0, revenueMillimes: 0 },
+        },
+      };
+    }
+    const until =
+      service.status === "OPEN" ? now.toISOString() : (service.closedAt ?? now.toISOString());
+    const rows = await serviceProductLines(deps.sql, deps.siteId, service.openedAt, until);
+    const products = rows.map((row) => ({
+      nameFr: row.name_fr,
+      stationKind: row.kind,
+      quantity: row.quantity,
+      revenueMillimes: row.revenue_millimes,
+    }));
+    const total = (kind?: "BAR" | "KITCHEN") => {
+      const picked = kind ? products.filter((line) => line.stationKind === kind) : products;
+      return {
+        quantity: picked.reduce((sum, line) => sum + line.quantity, 0),
+        revenueMillimes: picked.reduce((sum, line) => sum + line.revenueMillimes, 0),
+      };
+    };
+    return {
+      notice: "Rapport de gestion, pas un document fiscal",
+      service,
+      products,
+      totals: { all: total(), bar: total("BAR"), kitchen: total("KITCHEN") },
+    };
+  }
+
   app.get("/cash-shifts/current", { preHandler: permit("shift.manage") }, async (request) => {
     const current = actor(request);
     if (!current.deviceId) {
@@ -330,33 +601,46 @@ export function registerAdminRoutes(
     const rows = await admin.currentShift(current.deviceId);
     return { shift: rows[0] ?? null };
   });
-  app.get("/cash-shifts", { preHandler: either("shift.manage", "report.view") }, async (request) => {
-    const query = parse(
-      z.strictObject({ from: z.iso.datetime().optional(), to: z.iso.datetime().optional(), status: z.string().optional() }),
-      request.query,
-    );
-    return { shifts: await admin.listShifts(query.from, query.to, query.status) };
-  });
+  app.get(
+    "/cash-shifts",
+    { preHandler: either("shift.manage", "report.view") },
+    async (request) => {
+      const query = parse(
+        z.strictObject({
+          from: z.iso.datetime().optional(),
+          to: z.iso.datetime().optional(),
+          status: z.string().optional(),
+        }),
+        request.query,
+      );
+      return { shifts: await admin.listShifts(query.from, query.to, query.status) };
+    },
+  );
 
-  app.post("/orders/:id/payments", { preHandler: permit("payment.create") }, async (request, reply) => {
-    const params = parse(z.strictObject({ id: z.uuid() }), request.params);
-    const body = parse(createPaymentSchema, request.body);
-    if (body.method === "CASH" && body.tenderedMillimes === undefined) {
-      throw new AppError(400, "VALIDATION_ERROR", "Tendered amount is required for cash");
-    }
-    if (body.method !== "CASH" && body.tenderedMillimes !== undefined) {
-      throw new AppError(400, "VALIDATION_ERROR", "Tendered amount is only for cash");
-    }
-    const result = await run(() => admin.pay(actor(request), params.id, body, deps.clock.now()));
-    deps.realtime.publish(result.events);
-    return reply.status(201).send({ notice: result.notice, payment: result.payment });
-  });
+  app.post(
+    "/orders/:id/payments",
+    { preHandler: permit("payment.create") },
+    async (request, reply) => {
+      const params = parse(z.strictObject({ id: z.uuid() }), request.params);
+      const body = parse(createPaymentSchema, request.body);
+      if (body.method === "CASH" && body.tenderedMillimes === undefined) {
+        throw new AppError(400, "VALIDATION_ERROR", "Tendered amount is required for cash");
+      }
+      if (body.method !== "CASH" && body.tenderedMillimes !== undefined) {
+        throw new AppError(400, "VALIDATION_ERROR", "Tendered amount is only for cash");
+      }
+      const result = await run(() => admin.pay(actor(request), params.id, body, deps.clock.now()));
+      deps.realtime.publish(result.events);
+      return reply.status(201).send({ notice: result.notice, payment: result.payment });
+    },
+  );
 
   const reportKinds = [
     ["dashboard", "/reports/dashboard"],
     ["by-hour", "/reports/sales/by-hour"],
     ["by-day", "/reports/sales/by-day"],
     ["products", "/reports/products/top"],
+    ["product-analysis", "/reports/product-analysis"],
     ["payments", "/reports/payments"],
     ["stations", "/reports/stations"],
     ["servers", "/reports/servers"],
@@ -368,7 +652,13 @@ export function registerAdminRoutes(
   ] as const;
   for (const [kind, path] of reportKinds) {
     app.get(path, { preHandler: permit("report.view") }, async (request, reply) =>
-      sendReport(reply, deps.sql, deps.siteId, kind, parse(reportQuerySchema.partial({ from: true, to: true }), request.query)),
+      sendReport(
+        reply,
+        deps.sql,
+        deps.siteId,
+        kind,
+        parse(reportQuerySchema.partial({ from: true, to: true }), request.query),
+      ),
     );
   }
 
@@ -376,7 +666,16 @@ export function registerAdminRoutes(
     const query = parse(auditQuerySchema, request.query);
     const limit = query.limit ?? 30;
     const rows = await deps.sql<
-      { id: string; actor_user_id: string | null; action: string; entity_type: string; entity_id: string | null; before: unknown; after: unknown; at: Date }[]
+      {
+        id: string;
+        actor_user_id: string | null;
+        action: string;
+        entity_type: string;
+        entity_id: string | null;
+        before: unknown;
+        after: unknown;
+        at: Date;
+      }[]
     >`
       select id, actor_user_id, action, entity_type, entity_id, before, after, at
       from audit_log
@@ -407,9 +706,14 @@ export function registerAdminRoutes(
         before: row.before,
         after: row.after,
         at: row.at instanceof Date ? row.at.toISOString() : row.at,
-        adminOverride: Boolean(row.after && typeof row.after === "object" && "overrideBy" in row.after && row.after.overrideBy),
+        adminOverride: Boolean(
+          row.after &&
+          typeof row.after === "object" &&
+          "overrideBy" in row.after &&
+          row.after.overrideBy,
+        ),
       })),
-      nextCursor: rows.length === limit ? rows[rows.length - 1]?.id ?? null : null,
+      nextCursor: rows.length === limit ? (rows[rows.length - 1]?.id ?? null) : null,
     };
   });
 }
@@ -427,7 +731,14 @@ async function sendReport(
   },
 ): Promise<unknown> {
   const today = new Date().toISOString().slice(0, 10);
-  const report = await buildReport(sql, siteId, kind, query.from ?? today, query.to ?? today, query.stationKind);
+  const report = await buildReport(
+    sql,
+    siteId,
+    kind,
+    query.from ?? today,
+    query.to ?? today,
+    query.stationKind,
+  );
   if (query.format !== "csv") {
     return report;
   }
@@ -461,7 +772,12 @@ function parse<T>(schema: { parse(value: unknown): T }, value: unknown): T {
     return schema.parse(value);
   } catch (error) {
     if (error instanceof ZodError) {
-      throw new AppError(400, "VALIDATION_ERROR", "Invalid request", error.issues.map((issue) => ({ path: issue.path, message: issue.message })));
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "Invalid request",
+        error.issues.map((issue) => ({ path: issue.path, message: issue.message })),
+      );
     }
     throw error;
   }

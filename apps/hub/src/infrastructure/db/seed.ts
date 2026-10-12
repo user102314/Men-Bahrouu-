@@ -3,28 +3,21 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { businessDate } from "@resto/shared";
 import { drizzle } from "drizzle-orm/postgres-js";
 
-import { DEFAULT_VAT_RATE_BP } from "../../config/vat.js";
 import { hashSecret } from "../auth/argon2-hasher.js";
 import { openDatabase } from "./connection.js";
 import { assertNotProduction } from "./dev-only.js";
+import { defaultDailySpecialIds, syncServiceMenu } from "./menu-catalog.js";
 import { seedAdminDemo } from "./seed-admin-demo.js";
 import { SEED_IDS, tableId } from "./seed-ids.js";
-import {
-  categories,
-  devices,
-  floorTables,
-  printers,
-  products,
-  sites,
-  stations,
-  users,
-} from "./schema/index.js";
+import { devices, floorTables, printers, sites, stations, users } from "./schema/index.js";
 
 const DEV_PASSWORD = "Admin#2026dev";
 const DEV_PINS = {
   sonia: "4321",
+  nour: "2580",
   mohamed: "1234",
   amira: "2468",
   youssef: "1357",
@@ -48,15 +41,26 @@ const db = drizzle(sql);
 
 const existing = await sql<{ id: string }[]>`select id from sites where id = ${siteId}`;
 if (existing.length > 0) {
+  await ensureCashierNour(sql);
+  await ensureServiceTables(sql);
+  const menu = await syncServiceMenu(sql);
+  await ensureDailySpecials(sql);
+  console.log(`Carte du service : ${menu.products} produits.`);
+  if (menu.removed > 0 || menu.retired > 0) {
+    console.log(
+      `Anciens produits retirés : ${menu.removed}. Conservés car déjà commandés : ${menu.retired}.`,
+    );
+  }
   console.log("Database already seeded. Device tokens are not printed again.");
   console.log("If .devices.dev.json is missing, run pnpm db:reset on this development database.");
   await sql.end();
   process.exit(0);
 }
 
-const [passwordHash, soniaPin, mohamedPin, amiraPin, youssefPin] = await Promise.all([
+const [passwordHash, soniaPin, nourPin, mohamedPin, amiraPin, youssefPin] = await Promise.all([
   hashSecret(DEV_PASSWORD),
   hashSecret(DEV_PINS.sonia),
+  hashSecret(DEV_PINS.nour),
   hashSecret(DEV_PINS.mohamed),
   hashSecret(DEV_PINS.amira),
   hashSecret(DEV_PINS.youssef),
@@ -87,6 +91,13 @@ await db.insert(users).values([
     displayName: "Sonia",
     role: "CASHIER",
     pinHash: soniaPin,
+  },
+  {
+    id: SEED_IDS.nour,
+    siteId,
+    displayName: "Nour",
+    role: "CASHIER",
+    pinHash: nourPin,
   },
   {
     id: SEED_IDS.mohamed,
@@ -133,220 +144,7 @@ await db.insert(stations).values([
   },
 ]);
 
-await db.insert(categories).values([
-  {
-    id: SEED_IDS.hotDrinks,
-    siteId,
-    nameFr: "Boissons chaudes",
-    nameAr: "مشروبات ساخنة",
-    stationId: SEED_IDS.stationBar,
-    sortOrder: 1,
-  },
-  {
-    id: SEED_IDS.coldDrinks,
-    siteId,
-    nameFr: "Boissons fraîches",
-    nameAr: "مشروبات باردة",
-    stationId: SEED_IDS.stationBar,
-    sortOrder: 2,
-  },
-  {
-    id: SEED_IDS.starters,
-    siteId,
-    nameFr: "Entrées",
-    nameAr: "مقبلات",
-    stationId: SEED_IDS.stationKitchen,
-    sortOrder: 3,
-  },
-  {
-    id: SEED_IDS.mains,
-    siteId,
-    nameFr: "Plats",
-    nameAr: "أطباق",
-    stationId: SEED_IDS.stationKitchen,
-    sortOrder: 4,
-  },
-  {
-    id: SEED_IDS.fish,
-    siteId,
-    nameFr: "Poissons",
-    nameAr: "أسماك",
-    stationId: SEED_IDS.stationKitchen,
-    sortOrder: 5,
-  },
-  {
-    id: SEED_IDS.pasta,
-    siteId,
-    nameFr: "Pâtes et pizzas",
-    nameAr: "معكرونة وبيتزا",
-    stationId: SEED_IDS.stationKitchen,
-    sortOrder: 6,
-  },
-  {
-    id: SEED_IDS.desserts,
-    siteId,
-    nameFr: "Desserts",
-    nameAr: "حلويات",
-    stationId: SEED_IDS.stationKitchen,
-    sortOrder: 7,
-  },
-]);
-
-const vatRateBp = DEFAULT_VAT_RATE_BP;
-await db
-  .insert(products)
-  .values([
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.cafe,
-      SEED_IDS.hotDrinks,
-      "Café express",
-      "قهوة إكسبريس",
-      2_000,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.mintTea,
-      SEED_IDS.hotDrinks,
-      "Thé à la menthe",
-      "شاي بالنعناع",
-      2_500,
-      2,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.lemonade,
-      SEED_IDS.coldDrinks,
-      "Citronnade",
-      "ليموناضة",
-      6_000,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.orangeJuice,
-      SEED_IDS.coldDrinks,
-      "Jus d'orange frais",
-      "عصير برتقال طازج",
-      7_000,
-      2,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.water,
-      SEED_IDS.coldDrinks,
-      "Eau minérale",
-      "ماء معدني",
-      1_500,
-      3,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.brik,
-      SEED_IDS.starters,
-      "Brik à l'œuf",
-      "بريك بالبيض",
-      4_500,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.mechouia,
-      SEED_IDS.starters,
-      "Salade méchouia",
-      "سلطة مشوية",
-      8_000,
-      2,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.tunisianSalad,
-      SEED_IDS.starters,
-      "Salade tunisienne",
-      "سلطة تونسية",
-      7_000,
-      3,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.fishCouscous,
-      SEED_IDS.fish,
-      "Couscous au poisson",
-      "كسكس بالسمك",
-      28_000,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.grilledFish,
-      SEED_IDS.fish,
-      "Poisson grillé",
-      "سمك مشوي",
-      32_000,
-      2,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.escalope,
-      SEED_IDS.mains,
-      "Escalope grillée",
-      "إسكالوب مشوي",
-      18_000,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.seafoodPasta,
-      SEED_IDS.pasta,
-      "Spaghetti aux fruits de mer",
-      "سباغيتي بثمار البحر",
-      24_000,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.royalPizza,
-      SEED_IDS.pasta,
-      "Pizza royale",
-      "بيتزا رويال",
-      15_000,
-      2,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.tiramisu,
-      SEED_IDS.desserts,
-      "Tiramisu",
-      "تيراميسو",
-      9_000,
-      1,
-    ),
-    product(
-      siteId,
-      vatRateBp,
-      SEED_IDS.assida,
-      SEED_IDS.desserts,
-      "Assidat zgougou",
-      "عصيدة الزقوقو",
-      7_000,
-      2,
-    ),
-  ]);
+await syncServiceMenu(sql);
 
 const salle = Array.from({ length: 12 }, (_, index) => ({
   id: tableId(index),
@@ -363,6 +161,8 @@ const terrasse = Array.from({ length: 6 }, (_, index) => ({
   seats: 4,
 }));
 await db.insert(floorTables).values([...salle, ...terrasse]);
+await ensureServiceTables(sql);
+await ensureDailySpecials(sql);
 
 await db.insert(devices).values([
   {
@@ -392,6 +192,7 @@ console.log("");
 console.log("ATTENTION : identifiants de développement uniquement. Ne pas utiliser en production.");
 console.log(`ADMIN  Karim   admin@resto.local  ${DEV_PASSWORD}`);
 console.log(`CASHIER Sonia  PIN ${DEV_PINS.sonia}`);
+console.log(`CASHIER Nour    PIN ${DEV_PINS.nour}`);
 console.log(`WAITER Mohamed PIN ${DEV_PINS.mohamed}`);
 console.log(`WAITER Amira   PIN ${DEV_PINS.amira}`);
 console.log(`WAITER Youssef PIN ${DEV_PINS.youssef}`);
@@ -416,26 +217,57 @@ await seedAdminDemo(sql, siteId);
 
 await sql.end();
 
-function product(
-  site: string,
-  vat: number,
-  id: string,
-  categoryId: string,
-  nameFr: string,
-  nameAr: string,
-  priceMillimes: number,
-  sortOrder: number,
-) {
-  return {
-    id,
-    siteId: site,
-    categoryId,
-    nameFr,
-    nameAr,
-    priceMillimes,
-    vatRateBp: vat,
-    sortOrder,
-  };
+async function ensureServiceTables(db: typeof sql): Promise<void> {
+  const rows = Array.from({ length: 100 }, (_, index) => {
+    const number = index + 1;
+    const start = Math.floor(index / 25) * 25 + 1;
+    return {
+      id: tableId(200 + number),
+      site_id: SEED_IDS.site,
+      label: String(number),
+      zone: `${start}-${start + 24}`,
+      seats: 4,
+    };
+  });
+  const inserted = await db`
+    insert into floor_tables ${db(rows, "id", "site_id", "label", "zone", "seats")}
+    on conflict (site_id, label) do nothing
+  `;
+  if (inserted.count > 0) {
+    console.log(`Tables 1 à 100 ajoutées : ${inserted.count}`);
+  }
+}
+
+async function ensureDailySpecials(db: typeof sql): Promise<void> {
+  const rows = await db<{ key: string }[]>`
+    select key from settings where site_id = ${SEED_IDS.site} and key = 'dailySpecials'
+  `;
+  if (rows.length > 0) {
+    return;
+  }
+  const today = businessDate(new Date(), 5);
+  const value = JSON.stringify({
+    businessDate: today,
+    productIds: [...defaultDailySpecialIds()],
+  });
+  await db`
+    insert into settings (site_id, key, value)
+    values (${SEED_IDS.site}, 'dailySpecials', ${value}::jsonb)
+  `;
+  console.log(`Plat du jour ${today} : brik thon et kafteji`);
+}
+
+async function ensureCashierNour(db: typeof sql): Promise<void> {
+  const rows = await db<{ id: string }[]>`select id from users where id = ${SEED_IDS.nour}`;
+  if (rows.length > 0) {
+    return;
+  }
+  const pinHash = await hashSecret(DEV_PINS.nour);
+  await db`
+    insert into users (id, site_id, display_name, role, pin_hash)
+    values (${SEED_IDS.nour}, ${SEED_IDS.site}, 'Nour', 'CASHIER', ${pinHash})
+  `;
+  console.log(`CASHIER Nour ajoutée. PIN ${DEV_PINS.nour}`);
 }
 
 function createDeviceToken(): { token: string; tokenHash: string } {

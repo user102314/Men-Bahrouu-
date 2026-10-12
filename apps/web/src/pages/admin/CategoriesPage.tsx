@@ -16,6 +16,9 @@ export function CategoriesPage() {
   const [nameFr, setNameFr] = useState("");
   const [nameAr, setNameAr] = useState("");
   const [stationId, setStationId] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editFr, setEditFr] = useState("");
+  const [editAr, setEditAr] = useState("");
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin", "categories"] });
   const create = useMutation({
     mutationFn: () => adminApi.saveCategory(newId(), { nameFr, nameAr, stationId: stationId || stations.data?.[0]?.id }, true),
@@ -63,8 +66,41 @@ export function CategoriesPage() {
           {rows.map((category, index) => (
             <tr key={category.id} className="border-t border-line">
               <td className="p-3">
-                <p>{category.nameFr}</p>
-                <p dir="rtl">{category.nameAr}</p>
+                {editing === category.id ? (
+                  <div className="grid gap-2">
+                    <input className={fieldClass} value={editFr} onChange={(event) => setEditFr(event.target.value)} />
+                    <input className={fieldClass} dir="rtl" value={editAr} onChange={(event) => setEditAr(event.target.value)} />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        intent="primary"
+                        disabled={editFr.trim().length === 0 || editAr.trim().length === 0}
+                        onClick={() =>
+                          patch.mutate(
+                            { id: category.id, body: { nameFr: editFr.trim(), nameAr: editAr.trim() } },
+                            { onSuccess: () => setEditing(null) },
+                          )
+                        }
+                      >
+                        {t("admin.save")}
+                      </Button>
+                      <Button onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <p>{category.nameFr}</p>
+                    <p dir="rtl">{category.nameAr}</p>
+                    <Button
+                      onClick={() => {
+                        setEditing(category.id);
+                        setEditFr(category.nameFr);
+                        setEditAr(category.nameAr);
+                      }}
+                    >
+                      {t("admin.edit")}
+                    </Button>
+                  </div>
+                )}
               </td>
               <td className="p-3">
                 <StationTag kind={category.stationKind} />

@@ -77,8 +77,21 @@ export function SettingsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "settings"] }),
   });
   const createTable = useMutation({
-    mutationFn: () =>
-      adminApi.saveTable(newId(), { label: label.trim(), zone: zone.trim(), seats: Number(seats) }, true),
+    mutationFn: () => {
+      const rows = tables.data?.tables ?? [];
+      const next = nextTableLabel(rows);
+      const chosen = label.trim() || next;
+      const seatCount = Number(seats);
+      return adminApi.saveTable(
+        newId(),
+        {
+          label: chosen,
+          zone: zone.trim() || zoneForLabel(chosen),
+          seats: Number.isInteger(seatCount) && seatCount >= 1 && seatCount <= 30 ? seatCount : 4,
+        },
+        true,
+      );
+    },
     onSuccess: async () => {
       setLabel("");
       await queryClient.invalidateQueries({ queryKey: ["admin", "tables"] });
@@ -136,11 +149,11 @@ export function SettingsPage() {
         </Button>
       </FormSection>
       <FormSection title={t("admin.tables")}>
-        <input className={fieldClass} placeholder={t("admin.label")} value={label} onChange={(event) => setLabel(event.target.value)} />
+        <input className={fieldClass} placeholder={nextTableLabel(tables.data?.tables ?? [])} value={label} onChange={(event) => setLabel(event.target.value)} />
         <input className={fieldClass} placeholder={t("admin.zone")} value={zone} onChange={(event) => setZone(event.target.value)} />
         <input className={fieldClass} inputMode="numeric" value={seats} onChange={(event) => setSeats(event.target.value)} />
-        <Button intent="primary" disabled={!label.trim() || !zone.trim()} onClick={() => createTable.mutate()}>
-          {t("admin.create")}
+        <Button intent="primary" disabled={createTable.isPending} onClick={() => createTable.mutate()}>
+          {t("admin.addTable")}
         </Button>
         <div className="flex gap-2">
           <input className={fieldClass} placeholder={t("admin.from")} value={zoneFrom} onChange={(event) => setZoneFrom(event.target.value)} />
@@ -183,4 +196,22 @@ export function SettingsPage() {
       />
     </div>
   );
+}
+
+function nextTableLabel(rows: { label: string }[]): string {
+  const used = new Set(rows.map((row) => row.label));
+  let number = 1;
+  while (used.has(String(number))) {
+    number += 1;
+  }
+  return String(number);
+}
+
+function zoneForLabel(label: string): string {
+  const number = Number(label);
+  if (!Number.isInteger(number) || number < 1) {
+    return "Salle";
+  }
+  const start = Math.floor((number - 1) / 25) * 25 + 1;
+  return `${start}-${start + 24}`;
 }

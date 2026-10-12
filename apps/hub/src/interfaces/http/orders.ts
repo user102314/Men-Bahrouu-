@@ -1,6 +1,7 @@
 import {
   addItemsSchema,
   can,
+  requiresAdminOverride,
   createOrderSchema,
   decideCancellationSchema,
   ORDER_STATUSES,
@@ -57,6 +58,10 @@ export function registerOrderRoutes(
 
   app.get("/tables", { preHandler: deps.requirePermission("order.view.own") }, async (request) =>
     orders.tables(actor(request)),
+  );
+
+  app.get("/daily-specials", { preHandler: deps.requirePermission("order.view.own") }, async () =>
+    orders.dailySpecials(clock.now()),
   );
 
   app.post(
@@ -203,11 +208,11 @@ export function registerOrderRoutes(
       const params = parse(z.strictObject({ id: z.uuid() }), request.params);
       const body = parse(decideCancellationSchema, request.body);
       const current = actor(request);
-      if (current.role === "WAITER") {
+      if (!can(current.role, "cancellation.approve")) {
         throw new AppError(403, "FORBIDDEN", "Forbidden");
       }
       let overrideBy: string | null = null;
-      if (body.approve && current.role === "CASHIER") {
+      if (body.approve && requiresAdminOverride(current.role, "cancellation.approve")) {
         if (!body.adminOverride) {
           throw new AppError(403, "OVERRIDE_REQUIRED", "Admin override is required");
         }

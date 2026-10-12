@@ -11,9 +11,9 @@ export const fieldClass =
 
 export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <h1 className="font-display text-3xl">{title}</h1>
-      {children}
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+      <h1 className="font-display text-2xl sm:text-3xl">{title}</h1>
+      {children ? <div className="w-full min-w-0 sm:w-auto">{children}</div> : null}
     </div>
   );
 }
@@ -119,7 +119,7 @@ export function ConfirmDialog({
   const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())} title={title}>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button intent="danger" onClick={onConfirm}>
           {t("common.confirm")}
         </Button>
@@ -146,7 +146,7 @@ export function ReasonDialog({
         <span>{t("admin.reasonHint")}</span>
         <textarea className={fieldClass} value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <Button intent="primary" disabled={reason.trim().length < 3} onClick={() => onConfirm(reason.trim())}>
           {t("common.confirm")}
         </Button>

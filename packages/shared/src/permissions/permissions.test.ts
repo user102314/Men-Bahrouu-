@@ -5,7 +5,7 @@ import { PERMISSIONS, type Permission, can, requiresAdminOverride } from "./inde
 
 /**
  * Hand-written expectation. Do not derive this from ROLE_PERMISSIONS.
- * Cashier rows omit cancellation.approve and order.discount: those need an admin override.
+ * Cashier holds cancellation.approve. order.discount still needs an admin override.
  */
 const EXPECTED: Record<Role, readonly Permission[]> = {
   WAITER: [
@@ -26,6 +26,7 @@ const EXPECTED: Record<Role, readonly Permission[]> = {
     "order.markServed",
     "order.reprint",
     "cancellation.request",
+    "cancellation.approve",
     "payment.create",
     "shift.manage",
     "catalog.availability",
@@ -61,7 +62,7 @@ const EXPECTED: Record<Role, readonly Permission[]> = {
   ],
 };
 
-const CASHIER_OVERRIDES: readonly Permission[] = ["cancellation.approve", "order.discount"];
+const CASHIER_OVERRIDES: readonly Permission[] = ["order.discount"];
 
 describe("permission matrix", () => {
   it("matches the hand-written role matrix for every permission", () => {
@@ -73,7 +74,7 @@ describe("permission matrix", () => {
     }
   });
 
-  it("requires an admin override only for a cashier approval or discount", () => {
+  it("requires an admin override only for a cashier discount", () => {
     for (const role of ROLES) {
       for (const permission of PERMISSIONS) {
         const expected = role === "CASHIER" && CASHIER_OVERRIDES.includes(permission);

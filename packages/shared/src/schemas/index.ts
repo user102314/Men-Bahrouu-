@@ -5,6 +5,11 @@ import { deviceTypeSchema } from "../domain/enums.js";
 const pinSchema = z.string().regex(/^\d{4,6}$/);
 const uuidSchema = z.uuid();
 
+export const loginStaffSchema = z.strictObject({
+  pin: z.string().regex(/^\d{4}$/),
+});
+export type LoginStaffInput = z.infer<typeof loginStaffSchema>;
+
 export const loginPinSchema = z.strictObject({
   userId: uuidSchema,
   pin: pinSchema,

@@ -55,14 +55,14 @@ pnpm dev:web
 pnpm dev:info
 ```
 
-`pnpm dev` lance le hub. `pnpm dev:web` lance la page sur le port 5173, accessible depuis le réseau (`--host`).
+`pnpm dev` lance le hub. `pnpm dev:web` lance la page d’administration sur le port 5173. `pnpm dev:floor` lance la PWA de service sur le port 5174 : un code à 4 chiffres ouvre le rôle (serveur ou caisse), sans l’écran admin.
 
 1. Sur le PC, ouvrir `http://localhost:5173/setup?token=<jeton du PC caisse>` puis entrer avec Sonia, PIN `4321`.
 2. Sur la tablette, ouvrir `http://<IP du PC>:5173/setup?token=<jeton de la tablette>` puis entrer avec Mohamed, PIN `1234`.
 3. Mohamed ouvre T3, ajoute deux cafés (deux appuis : chaque appui est une ligne, car une annulation retire toute la ligne), une citronnade et un couscous, puis envoie. Le bar et la cuisine impriment un ticket.
 4. Sonia voit la carte arriver sans recharger la page et marque la commande servie.
 5. Mohamed ajoute un tiramisu et renvoie : ticket cuisine ADD.
-6. Mohamed demande l'annulation d'un seul café. Sonia refuse, ou accepte : sans le mot de passe admin l'acceptation est refusée (`OVERRIDE_REQUIRED`) ; avec `admin@resto.local` / `Admin#2026dev` le café est annulé et le bar imprime un ticket VOID.
+6. Mohamed demande l'annulation d'un seul café. Sonia refuse, ou accepte sans mot de passe admin : le café est annulé et le bar imprime un ticket VOID.
 7. Mohamed demande l'addition. La table passe à « à encaisser ». Sonia encaisse 50 TND en espèces : la monnaie s'affiche, la commande est payée, la table redevient libre sur la tablette. L'écran rappelle que c'est un enregistrement de gestion, non fiscal.
 8. Arrêter l'imprimante cuisine, envoyer une commande : Sonia voit l'échec en rouge. Relancer l'imprimante, puis Réessayer.
 9. Avec le jeton téléphone, un serveur n'est pas proposé (l'appareil n'accepte pas le personnel de salle). L'admin Karim, e-mail et mot de passe, ouvre `/admin` : tableau de bord, commandes, alertes, catalogue, réglages, imprimantes et appareils. Le stock, le personnel, la caisse et le journal restent au prochain lot.

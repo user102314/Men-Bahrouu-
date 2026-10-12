@@ -71,6 +71,7 @@ export function renderTicket(ticket: TicketPayload, columns = 48): Buffer {
   const chunks: Buffer[] = [Buffer.from([ESC, 0x40, ESC, 0x74, 19])];
   const title = ticket.stationKind === "KITCHEN" ? "CUISINE" : "BAR";
   chunks.push(align(1), size(0x11), line(title, columns), size(0x00));
+  chunks.push(line("=".repeat(Math.min(columns, 32)), columns));
   const banner = bannerFor(ticket.type);
   if (banner) {
     const reversed = ticket.type === "VOID";
@@ -86,13 +87,14 @@ export function renderTicket(ticket: TicketPayload, columns = 48): Buffer {
     chunks.push(line(`DEPUIS ${label(ticket.redirectedFrom)}`, columns));
   }
   chunks.push(size(0x11), line(`N° ${ticket.orderNumber}`, columns));
-  chunks.push(line(ticket.tableLabel ?? "A EMPORTER", columns), size(0x00), align(0));
+  chunks.push(line(ticket.tableLabel ? `TABLE ${ticket.tableLabel}` : "A EMPORTER", columns), size(0x00), align(0));
   chunks.push(line("-".repeat(columns), columns));
   for (const item of ticket.lines) {
     chunks.push(size(0x01), line(`${item.quantity} x ${item.nameFr}`, columns), size(0x00));
     if (item.note) {
       chunks.push(line(`  ${item.note}`, columns));
     }
+    chunks.push(line("", columns));
   }
   if (ticket.orderNote) {
     chunks.push(line(`Note: ${ticket.orderNote}`, columns));
@@ -184,11 +186,14 @@ function size(mode: number): Buffer {
 function formatTunis(iso: string): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Africa/Tunis",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hourCycle: "h23",
   }).formatToParts(new Date(iso));
-  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
-  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
-  return `${hour}:${minute}`;
+  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${pick("day")}/${pick("month")}/${pick("year")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
 }

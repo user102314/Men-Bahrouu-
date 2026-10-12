@@ -23,6 +23,9 @@ export async function buildReport(
   if (kind === "products") {
     return { notice: NOTICE, products: await topProducts(sql, siteId, from, to, stationKind) };
   }
+  if (kind === "product-analysis") {
+    return { notice: NOTICE, products: await productAnalysis(sql, siteId, from, to, stationKind) };
+  }
   if (kind === "payments") {
     return { notice: NOTICE, methods: await payments(sql, siteId, from, to) };
   }
@@ -114,7 +117,13 @@ async function byDay(sql: postgres.Sql, siteId: string, from: string, to: string
   `;
 }
 
-async function topProducts(sql: postgres.Sql, siteId: string, from: string, to: string, stationKind?: string) {
+async function topProducts(
+  sql: postgres.Sql,
+  siteId: string,
+  from: string,
+  to: string,
+  stationKind?: string,
+) {
   return sql`
     select i.product_name_snapshot as name, sum(i.quantity)::int as quantity,
            sum(i.quantity * i.unit_price_millimes)::int as revenue_millimes
@@ -127,6 +136,80 @@ async function topProducts(sql: postgres.Sql, siteId: string, from: string, to: 
     group by i.product_name_snapshot
     order by revenue_millimes desc
   `;
+}
+
+async function productAnalysis(
+  sql: postgres.Sql,
+  siteId: string,
+  from: string,
+  to: string,
+  stationKind?: string,
+) {
+  const rows = await sql<
+    {
+      product_id: string;
+      name: string;
+      kind: "BAR" | "KITCHEN";
+      sold_quantity: number;
+      revenue_millimes: number;
+      voided_quantity: number;
+      voided_millimes: number;
+    }[]
+  >`
+    select i.product_id,
+           i.product_name_snapshot as name,
+           s.kind,
+           coalesce(sum(i.quantity) filter (where i.status = 'ACTIVE' and o.status = 'PAID'), 0)::int as sold_quantity,
+           coalesce(sum(i.quantity * i.unit_price_millimes) filter (where i.status = 'ACTIVE' and o.status = 'PAID'), 0)::int as revenue_millimes,
+           coalesce(sum(i.quantity) filter (where i.status = 'VOIDED'), 0)::int as voided_quantity,
+           coalesce(sum(i.quantity * i.unit_price_millimes) filter (where i.status = 'VOIDED'), 0)::int as voided_millimes
+    from order_items i
+    join orders o on o.id = i.order_id
+    join stations s on s.id = i.station_id
+    where o.site_id = ${siteId}
+      and o.business_date between ${from}::date and ${to}::date
+      and (${stationKind ?? null}::text is null or s.kind = ${stationKind ?? null}::station_kind)
+    group by i.product_id, i.product_name_snapshot, s.kind
+    having coalesce(sum(i.quantity) filter (where i.status = 'ACTIVE' and o.status = 'PAID'), 0) > 0
+        or coalesce(sum(i.quantity) filter (where i.status = 'VOIDED'), 0) > 0
+    order by revenue_millimes desc, name
+  `;
+  const costs = await recipeUnitCosts(
+    sql,
+    rows.map((row) => row.product_id),
+  );
+  return rows.map((row) => ({
+    productId: row.product_id,
+    name: row.name,
+    kind: row.kind,
+    soldQuantity: row.sold_quantity,
+    revenueMillimes: row.revenue_millimes,
+    voidedQuantity: row.voided_quantity,
+    voidedMillimes: row.voided_millimes,
+    unitCostMillimes: costs.get(row.product_id) ?? null,
+  }));
+}
+
+async function recipeUnitCosts(
+  sql: postgres.Sql,
+  productIds: string[],
+): Promise<Map<string, number>> {
+  const costs = new Map<string, number>();
+  if (productIds.length === 0) {
+    return costs;
+  }
+  const lines = await sql<{ product_id: string; quantity_base: number; cost: number }[]>`
+    select i.product_id, i.quantity_base, s.avg_cost_millimes_per_1000_base as cost
+    from product_ingredients i
+    join stock_items s on s.id = i.stock_item_id
+    where i.product_id in ${sql(productIds)}
+  `;
+  for (const line of lines) {
+    const next =
+      (costs.get(line.product_id) ?? 0) + lineCostMillimes(line.quantity_base, line.cost);
+    costs.set(line.product_id, next);
+  }
+  return costs;
 }
 
 async function payments(sql: postgres.Sql, siteId: string, from: string, to: string) {
@@ -184,9 +267,17 @@ async function dailyClose(sql: postgres.Sql, siteId: string, from: string, to: s
     where o.site_id = ${siteId} and o.status = 'PAID' and i.status = 'ACTIVE'
       and o.business_date between ${from}::date and ${to}::date
   `;
-  const vatMillimes = lines.reduce((sum, line) => sum + vatPortionFromGross(millimes(line.gross), line.vat_rate_bp), 0);
+  const vatMillimes = lines.reduce(
+    (sum, line) => sum + vatPortionFromGross(millimes(line.gross), line.vat_rate_bp),
+    0,
+  );
   const voided = await period(sql, siteId, from, to);
-  return { methods, vatMillimes, voidCount: voided.voidCount, voidValueMillimes: voided.voidValueMillimes };
+  return {
+    methods,
+    vatMillimes,
+    voidCount: voided.voidCount,
+    voidValueMillimes: voided.voidValueMillimes,
+  };
 }
 
 async function stockValuation(sql: postgres.Sql, siteId: string) {
@@ -194,7 +285,8 @@ async function stockValuation(sql: postgres.Sql, siteId: string) {
     select quantity_base, avg_cost_millimes_per_1000_base as cost from stock_items where site_id = ${siteId} and is_active
   `;
   const valueMillimes = rows.reduce((sum, row) => {
-    const signed = Math.sign(row.quantity_base) * lineCostMillimes(Math.abs(row.quantity_base), row.cost);
+    const signed =
+      Math.sign(row.quantity_base) * lineCostMillimes(Math.abs(row.quantity_base), row.cost);
     return sum + signed;
   }, 0);
   return { valueMillimes };
@@ -211,7 +303,10 @@ async function foodCost(sql: postgres.Sql, siteId: string) {
       from product_ingredients i join stock_items s on s.id = i.stock_item_id
       where i.product_id = ${product.id}
     `;
-    const cost = lines.reduce((sum, line) => sum + lineCostMillimes(line.quantity_base, line.cost), 0);
+    const cost = lines.reduce(
+      (sum, line) => sum + lineCostMillimes(line.quantity_base, line.cost),
+      0,
+    );
     result.push({
       name: product.name_fr,
       priceMillimes: product.price_millimes,
@@ -238,15 +333,45 @@ function shiftRange(from: string, to: string): { from: string; to: string } {
   const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
   const previousEnd = new Date(start.getTime() - 86_400_000);
   const previousStart = new Date(previousEnd.getTime() - (days - 1) * 86_400_000);
-  return { from: previousStart.toISOString().slice(0, 10), to: previousEnd.toISOString().slice(0, 10) };
+  return {
+    from: previousStart.toISOString().slice(0, 10),
+    to: previousEnd.toISOString().slice(0, 10),
+  };
 }
 
 export function toCsv(rows: readonly Record<string, unknown>[]): string {
   const first = rows[0];
   const headers = first ? Object.keys(first) : ["empty"];
-  const body = rows.length === 0 ? [] : rows.map((row) => headers.map((key) => cell(key, row[key])));
+  const body =
+    rows.length === 0 ? [] : rows.map((row) => headers.map((key) => cell(key, row[key])));
   const lines = [headers.join(";"), ...body.map((row) => row.join(";"))];
   return `\uFEFF${lines.join("\r\n")}`;
+}
+
+export async function serviceProductLines(
+  sql: postgres.Sql,
+  siteId: string,
+  fromIso: string,
+  toIso: string,
+) {
+  return sql<
+    { name_fr: string; kind: "BAR" | "KITCHEN"; quantity: number; revenue_millimes: number }[]
+  >`
+    select p.name_fr, s.kind,
+           sum(i.quantity)::int as quantity,
+           sum(i.quantity * i.unit_price_millimes)::int as revenue_millimes
+    from order_items i
+    join orders o on o.id = i.order_id
+    join stations s on s.id = i.station_id
+    join products p on p.id = i.product_id
+    where o.site_id = ${siteId}
+      and o.status = 'PAID'
+      and i.status = 'ACTIVE'
+      and o.closed_at >= ${fromIso}::timestamptz
+      and o.closed_at <= ${toIso}::timestamptz
+    group by p.name_fr, s.kind
+    order by s.kind, p.name_fr
+  `;
 }
 
 function cell(key: string, value: unknown): string {

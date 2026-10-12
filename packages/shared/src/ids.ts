@@ -1,5 +1,8 @@
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** Dishes created only for today's specials live in this category, apart from the standing menu. */
+export const DAILY_CATEGORY_ID = "0199c0a0-0000-7000-8000-00000000030e";
+
 const RAND_A_MAX = 0xfff;
 
 let lastTimestamp = -1;

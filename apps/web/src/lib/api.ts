@@ -43,6 +43,7 @@ export const tablesSchema = z.object({
       zone: z.string(),
       seats: z.number().int().positive(),
       status: z.enum(["FREE", "OCCUPIED", "TO_PAY"]),
+      isActive: z.boolean().optional(),
       openOrderId: z.uuid().nullable(),
       occupiedSince: z.string().nullable(),
       ownedByMe: z.boolean(),

@@ -64,9 +64,6 @@ export function CashierPage() {
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [tenderedText, setTenderedText] = useState("");
   const [paid, setPaid] = useState<{ change: number | null; notice: string } | null>(null);
-  const [approveId, setApproveId] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -119,6 +116,29 @@ export function CashierPage() {
             {t("cashier.failed")} ({failed.length})
           </p>
         ) : null}
+        <section className="grid gap-3">
+          <h2 className="text-2xl">{t("waiter.floor")}</h2>
+          <div className="grid grid-cols-3 gap-2 md:grid-cols-6 xl:grid-cols-8">
+            {(tables.data?.tables ?? [])
+              .filter((table) => table.isActive !== false)
+              .sort((left, right) => left.label.localeCompare(right.label, "fr", { numeric: true }))
+              .map((table) => (
+                <button
+                  key={table.id}
+                  type="button"
+                  className="min-h-16 rounded-[14px] border border-line bg-surface p-2 text-start"
+                  onClick={() => {
+                    if (table.openOrderId) {
+                      setSelectedId(table.openOrderId);
+                    }
+                  }}
+                >
+                  <span className="block text-lg">{table.label}</span>
+                  <span className="text-sm">{t(`status.${table.status}`)}</span>
+                </button>
+              ))}
+          </div>
+        </section>
         <div className="grid gap-4 lg:grid-cols-3">
           {(["progress", "served", "topay"] as const).map((column) => (
             <section key={column} className="grid content-start gap-3">
@@ -183,7 +203,17 @@ export function CashierPage() {
               >
                 {t("cashier.refuse")}
               </Button>
-              <Button intent="primary" disabled={blocked || busy} onClick={() => setApproveId(item.id)}>
+              <Button
+                intent="primary"
+                disabled={blocked || busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api.decideCancellation(item.id, true);
+                    void queryClient.invalidateQueries({ queryKey: ["cancellations"] });
+                    void queryClient.invalidateQueries({ queryKey: ["orders"] });
+                  })
+                }
+              >
                 {t("cashier.approve")}
               </Button>
             </div>
@@ -390,58 +420,6 @@ export function CashierPage() {
         >
           {t("cashier.pay")}
         </Button>
-      </Dialog>
-      <Dialog
-        open={approveId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setApproveId(null);
-          }
-        }}
-        title={t("cashier.override")}
-      >
-        <p>{t("cashier.overrideHelp")}</p>
-        <form
-          className="mt-3 grid gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!approveId) {
-              return;
-            }
-            const id = approveId;
-            void run(async () => {
-              await api.decideCancellation(id, true, { email, password });
-              setApproveId(null);
-              setPassword("");
-              void queryClient.invalidateQueries({ queryKey: ["cancellations"] });
-              void queryClient.invalidateQueries({ queryKey: ["orders"] });
-            });
-          }}
-        >
-          <label className="grid gap-2">
-            {t("login.email")}
-            <input
-              className="min-h-12 rounded-[12px] border border-line bg-fond px-3"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </label>
-          <label className="grid gap-2">
-            {t("login.password")}
-            <input
-              className="min-h-12 rounded-[12px] border border-line bg-fond px-3"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </label>
-          <Button intent="primary" type="submit" disabled={blocked || busy}>
-            {t("cashier.approve")}
-          </Button>
-        </form>
       </Dialog>
     </div>
   );

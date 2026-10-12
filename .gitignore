@@ -14,3 +14,4 @@ Thumbs.db
 tools/fake-printer/out/
 .devices.dev.json
 .dev-device-tokens.json
+apps/hub/data/

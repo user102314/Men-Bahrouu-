@@ -6,6 +6,18 @@ export interface RestaurantProfile {
   phone: string;
 }
 
+export interface DailySpecials {
+  businessDate: string;
+  productIds: string[];
+}
+
+export interface ServiceRecette {
+  status: "OPEN" | "CLOSED";
+  businessDate: string;
+  openedAt: string;
+  closedAt: string | null;
+}
+
 export interface SiteSettings {
   restaurant: RestaurantProfile;
   defaultVatBp: number;
@@ -16,6 +28,8 @@ export interface SiteSettings {
   restockOnVoid: boolean;
   cashVarianceAlertMillimes: number;
   priceCeilingMillimes: number;
+  dailySpecials: DailySpecials;
+  serviceRecette: ServiceRecette;
 }
 
 const cache = new Map<string, SiteSettings>();
@@ -40,6 +54,8 @@ export function defaultSettings(fallback: {
     restockOnVoid: false,
     cashVarianceAlertMillimes: 0,
     priceCeilingMillimes: 1_000_000,
+    dailySpecials: { businessDate: "", productIds: [] },
+    serviceRecette: { status: "CLOSED", businessDate: "", openedAt: "", closedAt: null },
   };
 }
 
@@ -84,5 +100,21 @@ export function assignSetting(target: SiteSettings, key: string, value: unknown)
     target.cashVarianceAlertMillimes = value;
   } else if (key === "priceCeilingMillimes" && typeof value === "number") {
     target.priceCeilingMillimes = value;
+  } else if (key === "dailySpecials" && value && typeof value === "object") {
+    const record = value as { businessDate?: unknown; productIds?: unknown };
+    target.dailySpecials = {
+      businessDate: typeof record.businessDate === "string" ? record.businessDate : "",
+      productIds: Array.isArray(record.productIds)
+        ? record.productIds.filter((id): id is string => typeof id === "string").slice(0, 40)
+        : [],
+    };
+  } else if (key === "serviceRecette" && value && typeof value === "object") {
+    const record = value as { status?: unknown; businessDate?: unknown; openedAt?: unknown; closedAt?: unknown };
+    target.serviceRecette = {
+      status: record.status === "OPEN" ? "OPEN" : "CLOSED",
+      businessDate: typeof record.businessDate === "string" ? record.businessDate : "",
+      openedAt: typeof record.openedAt === "string" ? record.openedAt : "",
+      closedAt: typeof record.closedAt === "string" ? record.closedAt : null,
+    };
   }
 }

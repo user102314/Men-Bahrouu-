@@ -46,6 +46,52 @@ export class AuthService {
     private readonly hashToken: (token: string) => string,
   ) {}
 
+  async loginWithStaffPin(pin: string): Promise<SessionGrant | AuthFailure> {
+    const staff = await this.users.listActiveStaff(this.options.siteId);
+    let matched: StoredUser | null = null;
+    for (const user of staff) {
+      if ((user.role !== "WAITER" && user.role !== "CASHIER") || !user.pinHash) {
+        continue;
+      }
+      if (await this.hasher.verify(user.pinHash, pin)) {
+        if (matched) {
+          await this.auditFailure(null, null, "user");
+          return { ok: false, code: "AUTH_INVALID" };
+        }
+        matched = user;
+      }
+    }
+    if (!matched) {
+      await this.hasher.verify(this.dummyHash, pin);
+      await this.auditFailure(null, null, "user");
+      return { ok: false, code: "AUTH_INVALID" };
+    }
+    const now = this.clock.now();
+    if (matched.lockedUntil && matched.lockedUntil > now) {
+      await this.auditLock(matched, null);
+      return lockedResult(matched.lockedUntil, now);
+    }
+    await this.users.resetLoginFailures(matched.id);
+    await this.audit.record({
+      siteId: this.options.siteId,
+      actorUserId: matched.id,
+      deviceId: null,
+      action: "auth.login.succeeded",
+      entityType: "user",
+      entityId: matched.id,
+      before: null,
+      after: { role: matched.role, channel: "staff-pin" },
+    });
+    return {
+      ok: true,
+      userId: matched.id,
+      role: matched.role,
+      siteId: matched.siteId,
+      deviceId: null,
+      expiresInSeconds: this.options.waiterSessionSeconds,
+    };
+  }
+
   async loginWithPin(
     userId: string,
     pin: string,

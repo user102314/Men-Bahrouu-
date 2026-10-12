@@ -112,6 +112,28 @@ describe("authentication", () => {
     expect(response.json().error.code).toBe("DEVICE_NOT_ALLOWED");
   });
 
+  it("opens the floor with a 4-digit staff code and no device", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login-staff",
+      payload: { pin: waiterPin },
+    });
+    expect(response.statusCode).toBe(200);
+    const me = await app.inject({
+      method: "GET",
+      url: "/auth/me",
+      headers: { authorization: `Bearer ${response.json().token as string}` },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().role).toBe("WAITER");
+    const wrong = await app.inject({
+      method: "POST",
+      url: "/auth/login-staff",
+      payload: { pin: "0000" },
+    });
+    expect(wrong.statusCode).toBe(401);
+  });
+
   it("rejects a revoked device and invalidates an existing token", async () => {
     const login = await loginPin(waiterPin, tabletToken);
     expect(login.statusCode).toBe(200);

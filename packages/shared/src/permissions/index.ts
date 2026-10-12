@@ -45,14 +45,15 @@ const CASHIER_PERMISSIONS = [
   ...WAITER_PERMISSIONS,
   "order.view.all",
   "order.reprint",
+  "cancellation.approve",
   "payment.create",
   "shift.manage",
   "catalog.availability",
 ] as const satisfies readonly Permission[];
 
 /**
- * Cashier does not hold cancellation.approve or order.discount outright.
- * Those require an admin override. Admin holds every permission.
+ * Cashier holds cancellation.approve. order.discount still needs an admin override.
+ * Admin holds every permission.
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   WAITER: WAITER_PERMISSIONS,
@@ -60,7 +61,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ADMIN: PERMISSIONS,
 };
 
-const CASHIER_OVERRIDE_PERMISSIONS = ["cancellation.approve", "order.discount"] as const;
+const CASHIER_OVERRIDE_PERMISSIONS = ["order.discount"] as const;
 
 export function can(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role].includes(permission);

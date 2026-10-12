@@ -12,7 +12,7 @@ Amounts are branded integer millimes. VAT is computed from a caller-supplied bas
 
 ## Permissions
 
-`can(role, permission)` is the server-side check. A cashier does not hold `cancellation.approve` or `order.discount`; `requiresAdminOverride` marks those two. Approving a cancellation checks an admin password on the hub and writes both identities to the audit log.
+`can(role, permission)` is the server-side check. A cashier holds `cancellation.approve` and decides a waiter’s request alone. `order.discount` still needs an admin override.
 
 ## HTTP
 

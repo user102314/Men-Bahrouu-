@@ -77,11 +77,11 @@ const order = await postJson<Order>("/orders", waiter, {
   id: newId(),
   tableId: table.id,
   items: [
-    line(products, "Café express", 1),
-    line(products, "Café express", 1),
+    line(products, "Thé aux amandes", 1),
+    line(products, "Thé aux amandes", 1),
     line(products, "Citronnade", 1),
-    line(products, "Couscous au poisson", 1),
-    { ...line(products, "Brik à l'œuf", 1), note: "sans harissa" },
+    line(products, "Kafteji", 1),
+    { ...line(products, "Brik thon", 1), note: "sans harissa" },
   ],
 });
 console.log(`Commande ${order.dailyNumber} créée (${order.id}).`);
@@ -91,14 +91,14 @@ printTickets("Envoi", firstTickets);
 
 const sent = await getJson<{ order: Order }>(`/orders/${order.id}`, { headers: auth(waiter) });
 await postJson<Order>(`/orders/${order.id}/items`, waiter, {
-  items: [line(products, "Tiramisu", 1)],
+  items: [line(products, "Fruits de saison", 1)],
 });
 await postJson<Order>(`/orders/${sent.order.id}/send`, waiter, {});
 printTickets("Ajout", await waitForTickets(1));
 
 const coffee = required(
-  sent.order.items.find((item) => item.productNameSnapshot === "Café express"),
-  "café",
+  sent.order.items.find((item) => item.productNameSnapshot === "Thé aux amandes"),
+  "thé",
 );
 const cancellation = await postJson<{ cancellationId: string }>(
   `/orders/${order.id}/cancellation-requests`,
@@ -114,7 +114,7 @@ const sonia = required(
   "Sonia",
 );
 const cashier = await login(devices.cashierPc, sonia.id, "4321");
-const refused = await fetch(
+const approved = await fetch(
   `${hub}/cancellation-requests/${cancellation.cancellationId}/decision`,
   {
     method: "POST",
@@ -122,16 +122,11 @@ const refused = await fetch(
     body: JSON.stringify({ approve: true }),
   },
 );
-const refusedBody = (await refused.json()) as { error?: { code?: string } };
-console.log(`Approbation sans override : ${refused.status} ${refusedBody.error?.code ?? ""}`);
-if (refused.status !== 403) {
-  throw new Error("the cashier approval without an override should be refused");
+const approvedBody = (await approved.json()) as { error?: { code?: string } };
+console.log(`Approbation du caissier : ${approved.status} ${approvedBody.error?.code ?? ""}`);
+if (approved.status !== 200) {
+  throw new Error("the cashier should approve the cancellation");
 }
-
-await postJson(`/cancellation-requests/${cancellation.cancellationId}/decision`, cashier, {
-  approve: true,
-  adminOverride: { email: "admin@resto.local", password: "Admin#2026dev" },
-});
 printTickets("Annulation", await waitForTickets(1));
 
 const detail = await getJson<{

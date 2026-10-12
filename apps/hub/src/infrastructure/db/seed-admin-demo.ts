@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 
+import { menuProduct } from "./menu-catalog.js";
 import { SEED_IDS } from "./seed-ids.js";
 
 const supplierMarket = "0199c0a0-0000-7000-8000-000000000801";
@@ -7,7 +8,7 @@ const supplierOil = "0199c0a0-0000-7000-8000-000000000802";
 const supplierCoffee = "0199c0a0-0000-7000-8000-000000000803";
 const purchaseId = "0199c0a0-0000-7000-8000-000000000901";
 
-/** Tunisian pantry, recipes for the demo menu, one received purchase, expenses, and this week's plan. */
+/** Tunisian pantry, recipes for the service menu, one received purchase, expenses, and this week's plan. */
 export async function seedAdminDemo(sql: postgres.Sql, siteId: string): Promise<void> {
   const items = pantry();
   await sql`
@@ -154,59 +155,41 @@ function recipes(items: { id: string; code: string }[]) {
     }
     return found.id;
   };
-  const line = (productId: string, code: string, quantity: number) => ({ productId, stockId: id(code), quantity });
+  const line = (productId: string, code: string, quantity: number) => ({
+    productId,
+    stockId: id(code),
+    quantity,
+  });
+  const dish = (code: string) => menuProduct(code).id;
   return [
-    line(SEED_IDS.cafe, "CAF", 7),
-    line(SEED_IDS.cafe, "SUC", 5),
-    line(SEED_IDS.mintTea, "MEN", 8),
-    line(SEED_IDS.mintTea, "SUC", 15),
-    line(SEED_IDS.mintTea, "THE", 3),
-    line(SEED_IDS.lemonade, "CIT", 80),
-    line(SEED_IDS.lemonade, "SUC", 20),
-    line(SEED_IDS.lemonade, "EAU", 200),
-    line(SEED_IDS.orangeJuice, "ORG", 250),
-    line(SEED_IDS.orangeJuice, "SUC", 10),
-    line(SEED_IDS.water, "EAU", 500),
-    line(SEED_IDS.brik, "OEU", 1),
-    line(SEED_IDS.brik, "THO", 40),
-    line(SEED_IDS.brik, "HUI", 10),
-    line(SEED_IDS.mechouia, "TOM", 150),
-    line(SEED_IDS.mechouia, "PIM", 20),
-    line(SEED_IDS.mechouia, "AIL", 5),
-    line(SEED_IDS.mechouia, "HUI", 15),
-    line(SEED_IDS.tunisianSalad, "TOM", 120),
-    line(SEED_IDS.tunisianSalad, "OIG", 40),
-    line(SEED_IDS.tunisianSalad, "CIT", 20),
-    line(SEED_IDS.tunisianSalad, "HUI", 10),
-    line(SEED_IDS.fishCouscous, "SEM", 200),
-    line(SEED_IDS.fishCouscous, "POI", 180),
-    line(SEED_IDS.fishCouscous, "HAR", 15),
-    line(SEED_IDS.fishCouscous, "HUI", 20),
-    line(SEED_IDS.fishCouscous, "CIT", 30),
-    line(SEED_IDS.fishCouscous, "POIS", 40),
-    line(SEED_IDS.grilledFish, "POI", 250),
-    line(SEED_IDS.grilledFish, "CIT", 20),
-    line(SEED_IDS.grilledFish, "HUI", 15),
-    line(SEED_IDS.grilledFish, "CUM", 2),
-    line(SEED_IDS.escalope, "POU", 180),
-    line(SEED_IDS.escalope, "HUI", 10),
-    line(SEED_IDS.escalope, "SEL", 2),
-    line(SEED_IDS.seafoodPasta, "POI", 80),
-    line(SEED_IDS.seafoodPasta, "CRE", 80),
-    line(SEED_IDS.seafoodPasta, "AIL", 5),
-    line(SEED_IDS.seafoodPasta, "TOM", 60),
-    line(SEED_IDS.royalPizza, "FAR", 150),
-    line(SEED_IDS.royalPizza, "FRO", 40),
-    line(SEED_IDS.royalPizza, "JAM", 30),
-    line(SEED_IDS.royalPizza, "TOM", 50),
-    line(SEED_IDS.tiramisu, "MAS", 80),
-    line(SEED_IDS.tiramisu, "CAF", 10),
-    line(SEED_IDS.tiramisu, "SUC", 20),
-    line(SEED_IDS.tiramisu, "BIS", 30),
-    line(SEED_IDS.assida, "ZGO", 40),
-    line(SEED_IDS.assida, "PGN", 15),
-    line(SEED_IDS.assida, "SUC", 30),
-    line(SEED_IDS.assida, "FAR", 20),
+    line(dish("the-amandes"), "THE", 3),
+    line(dish("the-amandes"), "SUC", 15),
+    line(dish("citronnade"), "CIT", 80),
+    line(dish("citronnade"), "SUC", 20),
+    line(dish("citronnade"), "EAU", 200),
+    line(dish("eau-minerale-1l"), "EAU", 1000),
+    line(dish("brik-thon"), "THO", 40),
+    line(dish("brik-thon"), "OEU", 1),
+    line(dish("brik-thon"), "HUI", 10),
+    line(dish("salade-mechouia"), "TOM", 150),
+    line(dish("salade-mechouia"), "PIM", 20),
+    line(dish("salade-mechouia"), "AIL", 5),
+    line(dish("salade-mechouia"), "HUI", 15),
+    line(dish("salade-tunisienne"), "TOM", 120),
+    line(dish("salade-tunisienne"), "OIG", 40),
+    line(dish("salade-tunisienne"), "CIT", 20),
+    line(dish("salade-tunisienne"), "HUI", 10),
+    line(dish("daurade-grillee"), "POI", 250),
+    line(dish("daurade-grillee"), "CIT", 20),
+    line(dish("daurade-grillee"), "HUI", 15),
+    line(dish("daurade-grillee"), "CUM", 2),
+    line(dish("escalope-panee"), "POU", 180),
+    line(dish("escalope-panee"), "FAR", 30),
+    line(dish("escalope-panee"), "HUI", 10),
+    line(dish("spaghetti-fruits-de-mer"), "POI", 80),
+    line(dish("spaghetti-fruits-de-mer"), "CRE", 80),
+    line(dish("spaghetti-fruits-de-mer"), "AIL", 5),
+    line(dish("spaghetti-fruits-de-mer"), "TOM", 60),
   ];
 }
 

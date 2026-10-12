@@ -6,6 +6,7 @@ import {
   can,
   loginAdminSchema,
   loginPinSchema,
+  loginStaffSchema,
   registerDeviceSchema,
   requiresAdminOverride,
   type Permission,
@@ -107,7 +108,9 @@ export async function buildApp(
     hashDeviceToken,
   );
 
-  await app.register(helmet);
+  await app.register(helmet, {
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  });
   const origin = corsOriginOption(deps.config.nodeEnv, deps.config.corsOrigins);
   await app.register(cors, {
     origin,
@@ -158,6 +161,17 @@ export async function buildApp(
     }
     return reply.send({ device: result.device, profiles: result.profiles });
   });
+
+  app.post(
+    "/auth/login-staff",
+    { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const body = parse(loginStaffSchema, request.body);
+      request.log.info({ pin: body.pin }, "staff pin");
+      const result = await auth.loginWithStaffPin(body.pin);
+      return sendSession(reply, app, result);
+    },
+  );
 
   app.post(
     "/auth/login-pin",

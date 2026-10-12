@@ -14,7 +14,7 @@ const ticket: TicketPayload = ticketPayloadSchema.parse({
 });
 
 describe("renderTicket", () => {
-  it("prints quantities, notes, the Tunis time, and French accents within the width", () => {
+  it("prints quantities, notes, the Tunis date and time, and French accents within the width", () => {
     const text = decodeTicket(
       renderTicket(
         { ...ticket, lines: [{ quantity: 1, nameFr: "Café express", note: "serré" }] },
@@ -28,7 +28,7 @@ describe("renderTicket", () => {
       decodeTicket(renderTicket({ ...ticket, lines: [{ quantity: 1, nameFr: "Brik à l'œuf" }] })),
     ).toContain("1 x Brik à l'oeuf");
     expect(text).toContain("  serré");
-    expect(text).toContain("13:00");
+    expect(text).toContain("10/10/2026 13:00:00");
     expect(text).toContain("Mohamed");
     for (const row of text.split("\n")) {
       expect([...row].length).toBeLessThanOrEqual(48);

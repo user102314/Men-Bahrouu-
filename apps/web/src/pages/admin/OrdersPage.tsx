@@ -1,5 +1,6 @@
+import type { PublicOrder } from "@resto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CancellationInbox } from "../../components/admin/CancellationInbox.js";
@@ -12,12 +13,62 @@ import { hubErrorText } from "../../lib/errors.js";
 
 const FILTERS = ["", "DRAFT", "SENT", "SERVED", "PAID", "CANCELLED"] as const;
 
+function OrderLines({
+  order,
+  locale,
+  onReprint,
+  onClose,
+  reprintError,
+}: {
+  order: PublicOrder;
+  locale: "ar" | "fr";
+  onReprint: (orderId: string) => void;
+  onClose: () => void;
+  reprintError: string | null;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-2xl">
+          #{order.dailyNumber} · {order.serverName}
+        </h2>
+        <StatusBadge status={order.status} />
+      </div>
+      {order.note ? <p>{order.note}</p> : null}
+      <ul className="grid gap-1">
+        {order.items.map((item) => (
+          <li key={item.id} className="flex min-h-11 flex-wrap items-center justify-between gap-2">
+            <span className={item.status === "VOIDED" ? "line-through opacity-60" : ""}>
+              {item.quantity} × {item.productNameSnapshot}
+              {item.note ? ` · ${item.note}` : ""}
+            </span>
+            <span className="flex items-center gap-2">
+              <Money millimes={item.unitPriceMillimes * item.quantity} locale={locale} />
+              <StatusBadge status={item.status} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xl">
+        <Money millimes={order.totalMillimes} locale={locale} />
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => onReprint(order.id)}>{t("cashier.reprint")}</Button>
+        <Button onClick={onClose}>{t("common.cancel")}</Button>
+      </div>
+      {reprintError ? <ErrorState>{reprintError}</ErrorState> : null}
+    </>
+  );
+}
+
 export function OrdersPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language.startsWith("ar") ? "ar" : "fr";
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<(typeof FILTERS)[number]>("");
   const [selected, setSelected] = useState<string | null>(null);
+  const detailPanel = useRef<HTMLElement>(null);
   const list = useQuery({
     queryKey: ["admin", "orders", status],
     queryFn: () => adminApi.orders(status || undefined),
@@ -39,6 +90,9 @@ export function OrdersPage() {
   const reprint = useMutation({
     mutationFn: (orderId: string) => api.reprint(orderId),
   });
+  useEffect(() => {
+    detailPanel.current?.scrollIntoView({ block: "nearest" });
+  }, [selected, detail.data]);
 
   return (
     <div className="grid gap-4">
@@ -56,6 +110,21 @@ export function OrdersPage() {
         </select>
       </PageHeader>
       {list.error ? <ErrorState>{hubErrorText(list.error, t)}</ErrorState> : null}
+      {selected ? (
+        <section ref={detailPanel} className="grid gap-2 rounded-[14px] border border-line bg-surface p-4">
+          {detail.isPending ? <p>{t("common.loading")}</p> : null}
+          {detail.error ? <ErrorState>{hubErrorText(detail.error, t)}</ErrorState> : null}
+          {detail.data ? (
+            <OrderLines
+              order={detail.data.order}
+              locale={locale}
+              onReprint={(orderId) => reprint.mutate(orderId)}
+              onClose={() => setSelected(null)}
+              reprintError={reprint.error ? hubErrorText(reprint.error, t) : null}
+            />
+          ) : null}
+        </section>
+      ) : null}
       {list.data && list.data.orders.length === 0 ? <EmptyState>{t("admin.empty")}</EmptyState> : null}
       {list.data && list.data.orders.length > 0 ? (
         <DataTable>
@@ -71,7 +140,12 @@ export function OrdersPage() {
                   <Money millimes={order.totalMillimes} locale={locale} />
                 </td>
                 <td className="p-3">
-                  <Button onClick={() => setSelected(order.id)}>{t("cashier.detail")}</Button>
+                  <Button
+                    intent={selected === order.id ? "primary" : "quiet"}
+                    onClick={() => setSelected(selected === order.id ? null : order.id)}
+                  >
+                    {t("cashier.detail")}
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -79,25 +153,6 @@ export function OrdersPage() {
         </DataTable>
       ) : null}
       {list.data?.nextCursor ? <p className="text-sm">{t("admin.moreRows")}</p> : null}
-      {detail.data ? (
-        <section className="rounded-[14px] border border-line bg-surface p-4">
-          <h2 className="font-display text-2xl">#{detail.data.order.dailyNumber}</h2>
-          <ul className="mt-2">
-            {detail.data.order.items.map((item) => (
-              <li key={item.id} className="flex min-h-12 items-center justify-between gap-2">
-                <span>
-                  {item.quantity} × {item.productNameSnapshot}
-                </span>
-                <StatusBadge status={item.status} />
-              </li>
-            ))}
-          </ul>
-          <Button className="mt-3" onClick={() => reprint.mutate(detail.data.order.id)}>
-            {t("cashier.reprint")}
-          </Button>
-          {reprint.error ? <ErrorState>{hubErrorText(reprint.error, t)}</ErrorState> : null}
-        </section>
-      ) : null}
       <section className="grid gap-3">
         <h2 className="font-display text-2xl">{t("cashier.inbox")}</h2>
         <CancellationInbox

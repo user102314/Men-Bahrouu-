@@ -39,7 +39,7 @@ Authorization header: `Bearer` token. Floor routes also need the device that was
 | `GET /admin/stations` | `printer.manage` |
 | `GET /admin/printers` | `printer.manage` |
 | `GET /products/:id/ingredients` | `stock.manage` |
-| `POST /tables` | `settings.edit` |
+| `POST /tables` | `settings.edit` or `shift.manage` |
 | `PATCH /tables/:id` | `settings.edit` |
 | `POST /tables/zones` | `settings.edit` |
 | `POST /printers` | `printer.manage` |
@@ -47,6 +47,8 @@ Authorization header: `Bearer` token. Floor routes also need the device that was
 | `PATCH /stations/:id` | `printer.manage` |
 | `GET /settings` | `settings.edit` |
 | `PUT /settings` | `settings.edit` |
+| `GET /daily-specials` | `order.view.own` |
+| `PUT /daily-specials` | `catalog.edit` |
 
 `POST /categories` body: `{ "id", "nameFr", "nameAr", "stationId" }`. Response `201` echoes the category. Changing a category's station does not rewrite `order_items.station_id`.
 
@@ -65,6 +67,8 @@ Authorization header: `Bearer` token. Floor routes also need the device that was
 `POST /tables/zones` body: `{ "from": "Salle", "to": "Terrasse" }`.
 
 `POST /printers` body: `{ "id", "name", "host": "192.168.1.20", "port": 9100 }`.
+
+`GET /daily-specials` returns `{ businessDate, productIds }` for the current business date in `Africa/Tunis`. A list saved on another date comes back empty. `PUT /daily-specials` body is `{ productIds }` (at most 40 active products). The hub stamps today's business date, audits `settings.updated`, and drops the settings cache.
 
 `PUT /settings` accepts any non-empty subset of `restaurant` (`name`, `address`, `phone`), `defaultVatBp`, `businessDayCutoffHour`, `printColumns`, `ticketHeader`, `requireOpenShift` (default false), `restockOnVoid` (default false), `cashVarianceAlertMillimes` (default 0), `priceCeilingMillimes`. The cache is dropped and `settings.updated` is published. Example:
 
@@ -138,6 +142,9 @@ Authorization header: `Bearer` token. Floor routes also need the device that was
 | `POST /cash-shifts/:id/close` | `shift.manage` |
 | `PATCH /cash-shifts/:id` | authenticated admin, closed shift only |
 | `GET /cash-shifts/current` | `shift.manage` |
+| `GET /service-recette` | `shift.manage` |
+| `POST /service-recette/open` | `shift.manage` |
+| `POST /service-recette/close` | `shift.manage` |
 | `GET /cash-shifts?from&to&status` | `shift.manage` or `report.view` |
 | `POST /orders/:id/payments` | `payment.create` |
 | `POST /expenses` | `expense.manage` |
@@ -149,6 +156,8 @@ Open: `{ "id", "openingFloatMillimes": 10000 }`. One `OPEN` shift per device. Pu
 Movement: `{ "type": "PAY_OUT", "amountMillimes": 300, "reason": "Achat de glace" }`.
 
 Close: `{ "countedMillimes": 12000 }` returns `{ "expectedMillimes", "varianceMillimes" }` and publishes `shift.closed`.
+
+`POST /service-recette/open` starts the morning recette for the cashier on the floor. `POST /service-recette/close` ends it and returns paid product lines since the opening, with `totals.all`, `totals.bar`, and `totals.kitchen`. The `notice` is `Rapport de gestion, pas un document fiscal`. A second open while one is open returns `409`.
 
 Payment: `{ "method": "CASH", "tenderedMillimes": 3000 }` or `{ "method": "CARD" }`. The order must be `SENT` or `SERVED`, with every active line already sent. The amount is the order total computed by the hub. The row stores `payments.shift_id` when the cashier device has an open shift. Response `201`: `{ "notice": "enregistrement de gestion, non fiscal", "payment" }`. Publishes `order.paid` and `table.updated`. A second payment returns `ALREADY_PAID`.
 

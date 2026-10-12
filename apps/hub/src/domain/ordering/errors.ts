@@ -15,6 +15,7 @@ export const DOMAIN_CODES = [
   "SHIFT_CLOSED",
   "OVERLAP",
   "OPEN_ORDER",
+  "EMAIL_TAKEN",
 ] as const;
 
 export type DomainCode = (typeof DOMAIN_CODES)[number];
@@ -36,6 +37,7 @@ const HTTP: Record<DomainCode, { status: number; message: string }> = {
   SHIFT_CLOSED: { status: 409, message: "Closed shift cannot be changed" },
   OVERLAP: { status: 409, message: "Shifts overlap" },
   OPEN_ORDER: { status: 409, message: "Table has an open order" },
+  EMAIL_TAKEN: { status: 409, message: "Email is already used" },
 };
 
 export function domainHttp(code: DomainCode): { status: number; message: string } {

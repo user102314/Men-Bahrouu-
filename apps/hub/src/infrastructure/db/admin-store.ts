@@ -1,6 +1,8 @@
 import { randomInt } from "node:crypto";
 
 import {
+  businessDate,
+  DAILY_CATEGORY_ID,
   lineCostMillimes,
   newId,
   vatPortionFromGross,
@@ -13,7 +15,12 @@ import type postgres from "postgres";
 import { DomainError } from "../../domain/ordering/errors.js";
 import { hashSecret } from "../auth/argon2-hasher.js";
 import { isPrivatePrinterHost } from "./stock-effects.js";
-import { defaultSettings, invalidateSettings, loadSettings, type SiteSettings } from "./settings-store.js";
+import {
+  defaultSettings,
+  invalidateSettings,
+  loadSettings,
+  type SiteSettings,
+} from "./settings-store.js";
 
 type Tx = postgres.TransactionSql<Record<string, never>>;
 
@@ -49,8 +56,12 @@ export function createAdminStore(
       actor: Actor,
       patch: { [K in keyof SiteSettings]?: SiteSettings[K] | undefined },
     ) => putSettings(sql, siteId, actor, fallback, patch),
-    createCategory: (actor: Actor, input: { id: string; nameFr: string; nameAr: string; stationId: string }) =>
-      mutate(sql, (tx) => insertCategory(tx, siteId, actor, input)),
+    saveDailyOffers: (actor: Actor, offers: DailyOfferInput[], now: Date) =>
+      saveDailyOffers(sql, siteId, actor, fallback, offers, now),
+    createCategory: (
+      actor: Actor,
+      input: { id: string; nameFr: string; nameAr: string; stationId: string },
+    ) => mutate(sql, (tx) => insertCategory(tx, siteId, actor, input)),
     updateCategory: (
       actor: Actor,
       id: string,
@@ -61,7 +72,8 @@ export function createAdminStore(
         isActive?: boolean | undefined;
       },
     ) => mutate(sql, (tx) => patchCategory(tx, siteId, actor, id, patch)),
-    reorderCategories: (actor: Actor, ids: string[]) => mutate(sql, (tx) => reorder(tx, siteId, actor, "categories", ids)),
+    reorderCategories: (actor: Actor, ids: string[]) =>
+      mutate(sql, (tx) => reorder(tx, siteId, actor, "categories", ids)),
     createProduct: (
       actor: Actor,
       input: {
@@ -87,9 +99,13 @@ export function createAdminStore(
         isActive?: boolean | undefined;
       },
     ) => mutate(sql, (tx) => patchProduct(tx, siteId, actor, fallback, id, patch)),
-    reorderProducts: (actor: Actor, ids: string[]) => mutate(sql, (tx) => reorder(tx, siteId, actor, "products", ids)),
+    reorderProducts: (actor: Actor, ids: string[]) =>
+      mutate(sql, (tx) => reorder(tx, siteId, actor, "products", ids)),
     setAvailability: (actor: Actor, id: string, isAvailable: boolean) =>
       mutate(sql, (tx) => setAvailability(tx, siteId, actor, id, isAvailable)),
+    setProductImage: (actor: Actor, id: string, imageType: string | null) =>
+      mutate(sql, (tx) => setProductImage(tx, siteId, actor, id, imageType)),
+    productImageType: (id: string) => productImageType(sql, siteId, id),
     listCategories: () =>
       sql`
         select c.id, c.name_fr, c.name_ar, c.station_id, s.kind as station_kind, c.is_active, c.sort_order
@@ -117,46 +133,93 @@ export function createAdminStore(
       `,
     listProducts: () =>
       sql`
-        select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, is_available, is_active, sort_order
+        select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, is_available, is_active, image_type, sort_order
         from products where site_id = ${siteId} order by sort_order, name_fr
       `,
-    createTable: (actor: Actor, input: { id: string; label: string; zone: string; seats: number }) =>
-      mutate(sql, (tx) => insertTable(tx, siteId, actor, input)),
+    createTable: (
+      actor: Actor,
+      input: { id: string; label: string; zone: string; seats: number },
+    ) => mutate(sql, (tx) => insertTable(tx, siteId, actor, input)),
     updateTable: (
       actor: Actor,
       id: string,
-      patch: { label?: string | undefined; zone?: string | undefined; seats?: number | undefined; isActive?: boolean | undefined },
+      patch: {
+        label?: string | undefined;
+        zone?: string | undefined;
+        seats?: number | undefined;
+        isActive?: boolean | undefined;
+      },
     ) => mutate(sql, (tx) => patchTable(tx, siteId, actor, id, patch)),
-    renameZone: (actor: Actor, from: string, to: string) => mutate(sql, (tx) => renameZone(tx, siteId, actor, from, to)),
-    createPrinter: (actor: Actor, input: { id: string; name: string; host: string; port: number; paperWidthMm?: number | undefined }) =>
-      mutate(sql, (tx) => insertPrinter(tx, siteId, actor, input)),
+    renameZone: (actor: Actor, from: string, to: string) =>
+      mutate(sql, (tx) => renameZone(tx, siteId, actor, from, to)),
+    createPrinter: (
+      actor: Actor,
+      input: {
+        id: string;
+        name: string;
+        host: string;
+        port: number;
+        paperWidthMm?: number | undefined;
+      },
+    ) => mutate(sql, (tx) => insertPrinter(tx, siteId, actor, input)),
     updatePrinter: (
       actor: Actor,
       id: string,
-      patch: { name?: string | undefined; host?: string | undefined; port?: number | undefined; paperWidthMm?: number | undefined; isActive?: boolean | undefined },
+      patch: {
+        name?: string | undefined;
+        host?: string | undefined;
+        port?: number | undefined;
+        paperWidthMm?: number | undefined;
+        isActive?: boolean | undefined;
+      },
     ) => mutate(sql, (tx) => patchPrinter(tx, siteId, actor, id, patch)),
     updateStation: (
       actor: Actor,
       id: string,
-      patch: { printerId?: string | undefined; fallbackStationId?: string | undefined | null; name?: string | undefined },
+      patch: {
+        printerId?: string | undefined;
+        fallbackStationId?: string | undefined | null;
+        name?: string | undefined;
+      },
     ) => mutate(sql, (tx) => patchStation(tx, siteId, actor, id, patch)),
     listUsers: () =>
       sql`
-        select id, display_name, role, email, is_active from users
+        select id, display_name, role, email, is_active,
+               (pin_hash is not null) as has_pin,
+               (password_hash is not null) as has_password
+        from users
         where site_id = ${siteId} order by display_name
       `,
-    createUser: (actor: Actor, input: { id: string; displayName: string; role: Role; email?: string | undefined; password?: string | undefined }) =>
-      createUser(sql, siteId, actor, input),
-    updateUser: (actor: Actor, id: string, patch: { displayName?: string | undefined; email?: string | undefined }) =>
-      mutate(sql, (tx) => patchUser(tx, siteId, actor, id, patch)),
+    createUser: (
+      actor: Actor,
+      input: {
+        id: string;
+        displayName: string;
+        role: Role;
+        email?: string | undefined;
+        password?: string | undefined;
+      },
+    ) => createUser(sql, siteId, actor, input),
+    updateUser: (
+      actor: Actor,
+      id: string,
+      patch: { displayName?: string | undefined; email?: string | undefined },
+    ) => mutate(sql, (tx) => patchUser(tx, siteId, actor, id, patch)),
     resetPin: (actor: Actor, id: string) => resetPin(sql, siteId, actor, id),
     setActive: (actor: Actor, id: string, isActive: boolean) =>
       mutate(sql, (tx) => setActive(tx, siteId, actor, id, isActive)),
-    setRole: (actor: Actor, id: string, role: Role) => mutate(sql, (tx) => setRole(tx, siteId, actor, id, role)),
+    setRole: (
+      actor: Actor,
+      id: string,
+      input: { role: Role; email?: string | undefined; password?: string | undefined },
+    ) => setRole(sql, siteId, actor, id, input),
     clockIn: (actor: Actor, now: Date) => mutate(sql, (tx) => clock(tx, siteId, actor, now, "in")),
-    clockOut: (actor: Actor, now: Date) => mutate(sql, (tx) => clock(tx, siteId, actor, now, "out")),
-    listAttendance: (actor: Actor, filter: { from?: string | undefined; to?: string | undefined; userId?: string | undefined }) =>
-      listAttendance(sql, siteId, actor, filter),
+    clockOut: (actor: Actor, now: Date) =>
+      mutate(sql, (tx) => clock(tx, siteId, actor, now, "out")),
+    listAttendance: (
+      actor: Actor,
+      filter: { from?: string | undefined; to?: string | undefined; userId?: string | undefined },
+    ) => listAttendance(sql, siteId, actor, filter),
     editAttendance: (
       actor: Actor,
       id: string,
@@ -166,7 +229,13 @@ export function createAdminStore(
     putStaffShifts: (
       actor: Actor,
       weekStart: string,
-      slots: { userId: string; workDate: string; startTime: string; endTime: string; note?: string | undefined }[],
+      slots: {
+        userId: string;
+        workDate: string;
+        startTime: string;
+        endTime: string;
+        note?: string | undefined;
+      }[],
     ) => mutate(sql, (tx) => putStaffShifts(tx, siteId, actor, weekStart, slots)),
     listStock: () => sql`select * from stock_items where site_id = ${siteId} order by code`,
     stockMovements: (id: string) =>
@@ -189,13 +258,28 @@ export function createAdminStore(
     updateStockItem: (
       actor: Actor,
       id: string,
-      patch: { code?: string | undefined; nameFr?: string | undefined; nameAr?: string | undefined; minThresholdBase?: number | undefined; supplierId?: string | undefined; isActive?: boolean | undefined },
+      patch: {
+        code?: string | undefined;
+        nameFr?: string | undefined;
+        nameAr?: string | undefined;
+        minThresholdBase?: number | undefined;
+        supplierId?: string | undefined;
+        isActive?: boolean | undefined;
+      },
     ) => mutate(sql, (tx) => patchStockItem(tx, siteId, actor, id, patch)),
-    setRecipe: (actor: Actor, productId: string, ingredients: { stockItemId: string; quantityBase: number }[]) =>
-      mutate(sql, (tx) => setRecipe(tx, siteId, actor, productId, ingredients)),
+    setRecipe: (
+      actor: Actor,
+      productId: string,
+      ingredients: { stockItemId: string; quantityBase: number }[],
+    ) => mutate(sql, (tx) => setRecipe(tx, siteId, actor, productId, ingredients)),
     manualMovement: (
       actor: Actor,
-      input: { stockItemId: string; deltaBase: number; reason: "WASTE" | "CORRECTION"; note: string },
+      input: {
+        stockItemId: string;
+        deltaBase: number;
+        reason: "WASTE" | "CORRECTION";
+        note: string;
+      },
     ) => mutate(sql, (tx) => manualMovement(tx, siteId, actor, input)),
     stockAlerts: () =>
       sql`
@@ -208,12 +292,19 @@ export function createAdminStore(
       input: { note?: string | undefined; lines: { stockItemId: string; countedBase: number }[] },
     ) => mutate(sql, (tx) => takeInventory(tx, siteId, actor, input)),
     listSuppliers: () => sql`select * from suppliers where site_id = ${siteId} order by name`,
-    createSupplier: (actor: Actor, input: { id: string; name: string; phone?: string | undefined; note?: string | undefined }) =>
-      mutate(sql, (tx) => insertSupplier(tx, siteId, actor, input)),
+    createSupplier: (
+      actor: Actor,
+      input: { id: string; name: string; phone?: string | undefined; note?: string | undefined },
+    ) => mutate(sql, (tx) => insertSupplier(tx, siteId, actor, input)),
     updateSupplier: (
       actor: Actor,
       id: string,
-      patch: { name?: string | undefined; phone?: string | undefined; note?: string | undefined; isActive?: boolean | undefined },
+      patch: {
+        name?: string | undefined;
+        phone?: string | undefined;
+        note?: string | undefined;
+        isActive?: boolean | undefined;
+      },
     ) => mutate(sql, (tx) => patchSupplier(tx, siteId, actor, id, patch)),
     createPurchase: (
       actor: Actor,
@@ -232,12 +323,16 @@ export function createAdminStore(
         supplierId?: string | undefined;
         invoiceRef?: string | undefined;
         purchaseDate?: string | undefined;
-        lines?: { stockItemId: string; quantityBase: number; totalCostMillimes: number }[] | undefined;
+        lines?:
+          { stockItemId: string; quantityBase: number; totalCostMillimes: number }[] | undefined;
       },
     ) => mutate(sql, (tx) => patchPurchase(tx, siteId, actor, id, input)),
-    receivePurchase: (actor: Actor, id: string, now: Date) => mutate(sql, (tx) => receivePurchase(tx, siteId, actor, id, now)),
-    cancelPurchase: (actor: Actor, id: string) => mutate(sql, (tx) => cancelPurchase(tx, siteId, actor, id)),
-    markPurchasePaid: (actor: Actor, id: string) => mutate(sql, (tx) => markPurchasePaid(tx, siteId, actor, id)),
+    receivePurchase: (actor: Actor, id: string, now: Date) =>
+      mutate(sql, (tx) => receivePurchase(tx, siteId, actor, id, now)),
+    cancelPurchase: (actor: Actor, id: string) =>
+      mutate(sql, (tx) => cancelPurchase(tx, siteId, actor, id)),
+    markPurchasePaid: (actor: Actor, id: string) =>
+      mutate(sql, (tx) => markPurchasePaid(tx, siteId, actor, id)),
     createExpense: (
       actor: Actor,
       input: {
@@ -250,8 +345,11 @@ export function createAdminStore(
         payFromShiftId?: string | undefined;
       },
     ) => mutate(sql, (tx) => insertExpense(tx, siteId, actor, input)),
-    updateExpense: (actor: Actor, id: string, patch: { note?: string | undefined; isVoid?: boolean | undefined }) =>
-      mutate(sql, (tx) => patchExpense(tx, siteId, actor, id, patch)),
+    updateExpense: (
+      actor: Actor,
+      id: string,
+      patch: { note?: string | undefined; isVoid?: boolean | undefined },
+    ) => mutate(sql, (tx) => patchExpense(tx, siteId, actor, id, patch)),
     listExpenses: (from: string, to: string, category?: string | undefined) =>
       sql`
         select * from expenses
@@ -264,11 +362,21 @@ export function createAdminStore(
     cashMovement: (
       actor: Actor,
       shiftId: string,
-      input: { type: "PAY_IN" | "PAY_OUT"; amountMillimes: number; reason: string; expenseId?: string | undefined },
+      input: {
+        type: "PAY_IN" | "PAY_OUT";
+        amountMillimes: number;
+        reason: string;
+        expenseId?: string | undefined;
+      },
     ) => mutate(sql, (tx) => addCashMovement(tx, siteId, actor, shiftId, input)),
-    closeShift: (actor: Actor, id: string, input: { countedMillimes: number; note?: string | undefined }, now: Date) =>
-      mutate(sql, (tx) => closeShift(tx, siteId, actor, fallback, id, input, now)),
-    noteShift: (actor: Actor, id: string, note: string) => mutate(sql, (tx) => noteShift(tx, siteId, actor, id, note)),
+    closeShift: (
+      actor: Actor,
+      id: string,
+      input: { countedMillimes: number; note?: string | undefined },
+      now: Date,
+    ) => mutate(sql, (tx) => closeShift(tx, siteId, actor, fallback, id, input, now)),
+    noteShift: (actor: Actor, id: string, note: string) =>
+      mutate(sql, (tx) => noteShift(tx, siteId, actor, id, note)),
     listShifts: (from?: string | undefined, to?: string | undefined, status?: string | undefined) =>
       sql`
         select * from cash_shifts
@@ -324,6 +432,172 @@ async function track(
   `;
 }
 
+interface DailyOfferInput {
+  id: string;
+  productId: string | null;
+  nameFr: string;
+  nameAr: string;
+  priceMillimes: number;
+  confirmHighPrice?: boolean | undefined;
+}
+
+interface SavedDailyOffer {
+  id: string;
+  productId: string;
+  nameFr: string;
+  nameAr: string;
+  priceMillimes: number;
+  fromCatalog: boolean;
+}
+
+async function saveDailyOffers(
+  sql: postgres.Sql,
+  siteId: string,
+  actor: Actor,
+  fallback: SiteSettings,
+  offers: DailyOfferInput[],
+  now: Date,
+): Promise<{
+  menu: { businessDate: string; productIds: string[]; offers: SavedDailyOffer[] };
+  events: LiveEvent[];
+}> {
+  const saved = await mutate(sql, async (tx) => {
+    const cutoffRows = await tx<{ value: number }[]>`
+      select value from settings where site_id = ${siteId} and key = 'businessDayCutoffHour'
+    `;
+    const cutoff =
+      typeof cutoffRows[0]?.value === "number"
+        ? cutoffRows[0].value
+        : fallback.businessDayCutoffHour;
+    const today = businessDate(now, cutoff);
+    const kept: SavedDailyOffer[] = [];
+    const seen = new Set<string>();
+    for (const offer of offers) {
+      if (offer.productId === null) {
+        await ensureDailyCategory(tx, siteId);
+        await insertProduct(tx, siteId, actor, fallback, {
+          id: offer.id,
+          categoryId: DAILY_CATEGORY_ID,
+          nameFr: offer.nameFr,
+          nameAr: offer.nameAr,
+          priceMillimes: offer.priceMillimes,
+          ...(offer.confirmHighPrice ? { confirmHighPrice: true } : {}),
+        });
+        kept.push({
+          id: offer.id,
+          productId: offer.id,
+          nameFr: offer.nameFr,
+          nameAr: offer.nameAr,
+          priceMillimes: offer.priceMillimes,
+          fromCatalog: false,
+        });
+        seen.add(offer.id);
+        continue;
+      }
+      if (seen.has(offer.productId)) {
+        continue;
+      }
+      const rows = await tx<
+        {
+          id: string;
+          category_id: string;
+          name_fr: string;
+          name_ar: string;
+          price_millimes: number;
+          is_active: boolean;
+        }[]
+      >`
+        select id, category_id, name_fr, name_ar, price_millimes, is_active
+        from products where id = ${offer.productId} and site_id = ${siteId}
+      `;
+      const product = rows[0];
+      if (!product?.is_active && product?.category_id !== DAILY_CATEGORY_ID) {
+        continue;
+      }
+      if (!product) {
+        continue;
+      }
+      if (product.category_id === DAILY_CATEGORY_ID) {
+        await patchProduct(tx, siteId, actor, fallback, product.id, {
+          nameFr: offer.nameFr,
+          nameAr: offer.nameAr,
+          priceMillimes: offer.priceMillimes,
+          isActive: true,
+          ...(offer.confirmHighPrice ? { confirmHighPrice: true } : {}),
+        });
+        await tx`
+          update products set is_available = true, updated_at = now()
+          where id = ${product.id} and site_id = ${siteId}
+        `;
+        kept.push({
+          id: product.id,
+          productId: product.id,
+          nameFr: offer.nameFr,
+          nameAr: offer.nameAr,
+          priceMillimes: offer.priceMillimes,
+          fromCatalog: false,
+        });
+      } else if (product.is_active) {
+        kept.push({
+          id: product.id,
+          productId: product.id,
+          nameFr: product.name_fr,
+          nameAr: product.name_ar,
+          priceMillimes: product.price_millimes,
+          fromCatalog: true,
+        });
+      }
+      seen.add(product.id);
+    }
+    const keptIds = kept.map((offer) => offer.productId);
+    if (keptIds.length === 0) {
+      await tx`
+        update products
+        set is_active = false, is_available = false, updated_at = now()
+        where site_id = ${siteId} and category_id = ${DAILY_CATEGORY_ID} and is_active = true
+      `;
+    } else {
+      await tx`
+        update products
+        set is_active = false, is_available = false, updated_at = now()
+        where site_id = ${siteId} and category_id = ${DAILY_CATEGORY_ID} and is_active = true
+          and id not in ${tx(keptIds)}
+      `;
+    }
+    const value = { businessDate: today, productIds: keptIds };
+    await tx`
+      insert into settings (site_id, key, value, updated_by)
+      values (${siteId}, 'dailySpecials', ${tx.json(value)}, ${actor.id})
+      on conflict (site_id, key) do update
+      set value = excluded.value, updated_by = excluded.updated_by, updated_at = now()
+    `;
+    await track(tx, siteId, actor, "settings.updated", "settings", siteId, null, {
+      dailySpecials: value,
+    });
+    return { businessDate: today, productIds: keptIds, offers: kept };
+  });
+  invalidateSettings(siteId);
+  return {
+    menu: saved,
+    events: [{ name: "settings.updated", serverId: "", payload: { keys: ["dailySpecials"] } }],
+  };
+}
+
+async function ensureDailyCategory(tx: Tx, siteId: string): Promise<void> {
+  const stations = await tx<{ id: string }[]>`
+    select id from stations where site_id = ${siteId} and kind = 'KITCHEN' order by name limit 1
+  `;
+  const station = stations[0];
+  if (!station) {
+    throw new DomainError("NOT_FOUND");
+  }
+  await tx`
+    insert into categories (id, site_id, name_fr, name_ar, station_id, sort_order, is_active)
+    values (${DAILY_CATEGORY_ID}, ${siteId}, 'Plat du jour', 'طبق اليوم', ${station.id}, -1, true)
+    on conflict (id) do update set is_active = true, updated_at = now()
+  `;
+}
+
 async function putSettings(
   sql: postgres.Sql,
   siteId: string,
@@ -345,7 +619,16 @@ async function putSettings(
         on conflict (site_id, key) do update
         set value = excluded.value, updated_by = excluded.updated_by, updated_at = now()
       `;
-      await track(tx, siteId, actor, "settings.updated", "settings", siteId, { [key]: current[key] }, { [key]: value });
+      await track(
+        tx,
+        siteId,
+        actor,
+        "settings.updated",
+        "settings",
+        siteId,
+        { [key]: current[key] },
+        { [key]: value },
+      );
     }
   });
   invalidateSettings(siteId);
@@ -403,7 +686,13 @@ async function patchCategory(
   return patch;
 }
 
-async function reorder(tx: Tx, siteId: string, actor: Actor, table: "categories" | "products", ids: string[]): Promise<void> {
+async function reorder(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  table: "categories" | "products",
+  ids: string[],
+): Promise<void> {
   for (const [index, id] of ids.entries()) {
     if (table === "categories") {
       await tx`update categories set sort_order = ${index}, updated_at = now() where id = ${id} and site_id = ${siteId}`;
@@ -481,7 +770,43 @@ async function patchProduct(
   return patch;
 }
 
-async function setAvailability(tx: Tx, siteId: string, actor: Actor, id: string, isAvailable: boolean): Promise<LiveEvent> {
+async function setProductImage(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  id: string,
+  imageType: string | null,
+): Promise<{ id: string; imageType: string | null }> {
+  const rows = await tx<{ image_type: string | null }[]>`
+    update products set image_type = ${imageType}, updated_at = now()
+    where id = ${id} and site_id = ${siteId}
+    returning image_type
+  `;
+  if (rows.length === 0) {
+    throw new DomainError("NOT_FOUND");
+  }
+  await track(tx, siteId, actor, "product.image", "product", id, null, { imageType });
+  return { id, imageType };
+}
+
+async function productImageType(
+  sql: postgres.Sql,
+  siteId: string,
+  id: string,
+): Promise<string | null> {
+  const rows = await sql<{ image_type: string | null }[]>`
+    select image_type from products where id = ${id} and site_id = ${siteId}
+  `;
+  return rows[0]?.image_type ?? null;
+}
+
+async function setAvailability(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  id: string,
+  isAvailable: boolean,
+): Promise<LiveEvent> {
   const rows = await tx<{ id: string }[]>`
     update products set is_available = ${isAvailable}, updated_at = now()
     where id = ${id} and site_id = ${siteId} returning id
@@ -494,17 +819,29 @@ async function setAvailability(tx: Tx, siteId: string, actor: Actor, id: string,
   return { name: "catalog.updated", serverId: "", payload };
 }
 
-async function assertPrice(tx: Tx, siteId: string, fallback: SiteSettings, price: number, confirmed: boolean): Promise<void> {
+async function assertPrice(
+  tx: Tx,
+  siteId: string,
+  fallback: SiteSettings,
+  price: number,
+  confirmed: boolean,
+): Promise<void> {
   const rows = await tx<{ value: number }[]>`
     select value from settings where site_id = ${siteId} and key = 'priceCeilingMillimes'
   `;
-  const ceiling = typeof rows[0]?.value === "number" ? rows[0].value : fallback.priceCeilingMillimes;
+  const ceiling =
+    typeof rows[0]?.value === "number" ? rows[0].value : fallback.priceCeilingMillimes;
   if (price >= ceiling && !confirmed) {
     throw new DomainError("PRICE_CONFIRMATION");
   }
 }
 
-async function insertTable(tx: Tx, siteId: string, actor: Actor, input: { id: string; label: string; zone: string; seats: number }) {
+async function insertTable(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  input: { id: string; label: string; zone: string; seats: number },
+) {
   await tx`
     insert into floor_tables (id, site_id, label, zone, seats) values (${input.id}, ${siteId}, ${input.label}, ${input.zone}, ${input.seats})
   `;
@@ -517,7 +854,12 @@ async function patchTable(
   siteId: string,
   actor: Actor,
   id: string,
-  patch: { label?: string | undefined; zone?: string | undefined; seats?: number | undefined; isActive?: boolean | undefined },
+  patch: {
+    label?: string | undefined;
+    zone?: string | undefined;
+    seats?: number | undefined;
+    isActive?: boolean | undefined;
+  },
 ) {
   if (patch.isActive === false) {
     const open = await tx<{ id: string }[]>`
@@ -553,7 +895,13 @@ async function insertPrinter(
   tx: Tx,
   siteId: string,
   actor: Actor,
-  input: { id: string; name: string; host: string; port: number; paperWidthMm?: number | undefined },
+  input: {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    paperWidthMm?: number | undefined;
+  },
 ) {
   if (!isPrivatePrinterHost(input.host)) {
     throw new DomainError("HOST_NOT_PRIVATE");
@@ -571,7 +919,13 @@ async function patchPrinter(
   siteId: string,
   actor: Actor,
   id: string,
-  patch: { name?: string | undefined; host?: string | undefined; port?: number | undefined; paperWidthMm?: number | undefined; isActive?: boolean | undefined },
+  patch: {
+    name?: string | undefined;
+    host?: string | undefined;
+    port?: number | undefined;
+    paperWidthMm?: number | undefined;
+    isActive?: boolean | undefined;
+  },
 ) {
   if (patch.host && !isPrivatePrinterHost(patch.host)) {
     throw new DomainError("HOST_NOT_PRIVATE");
@@ -598,7 +952,11 @@ async function patchStation(
   siteId: string,
   actor: Actor,
   id: string,
-  patch: { printerId?: string | undefined; fallbackStationId?: string | undefined | null; name?: string | undefined },
+  patch: {
+    printerId?: string | undefined;
+    fallbackStationId?: string | undefined | null;
+    name?: string | undefined;
+  },
 ) {
   if (patch.printerId) {
     await assertSameSite(tx, "printers", patch.printerId, siteId);
@@ -627,8 +985,17 @@ async function createUser(
   sql: postgres.Sql,
   siteId: string,
   actor: Actor,
-  input: { id: string; displayName: string; role: Role; email?: string | undefined; password?: string | undefined },
+  input: {
+    id: string;
+    displayName: string;
+    role: Role;
+    email?: string | undefined;
+    password?: string | undefined;
+  },
 ): Promise<{ id: string; pin?: string | undefined }> {
+  if (input.email) {
+    await assertEmailFree(sql, siteId, input.email, input.id);
+  }
   const pin = input.role === "ADMIN" ? undefined : String(randomInt(1000, 10000));
   const passwordHash = input.password ? await hashSecret(input.password) : null;
   const pinHash = pin ? await hashSecret(pin) : null;
@@ -651,7 +1018,13 @@ async function createUser(
   return pin ? { id: input.id, pin } : { id: input.id };
 }
 
-async function patchUser(tx: Tx, siteId: string, actor: Actor, id: string, patch: { displayName?: string | undefined; email?: string | undefined }) {
+async function patchUser(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  id: string,
+  patch: { displayName?: string | undefined; email?: string | undefined },
+) {
   const rows = await tx<{ id: string }[]>`
     update users set
       display_name = coalesce(${patch.displayName ?? null}, display_name),
@@ -666,7 +1039,12 @@ async function patchUser(tx: Tx, siteId: string, actor: Actor, id: string, patch
   return patch;
 }
 
-async function resetPin(sql: postgres.Sql, siteId: string, actor: Actor, id: string): Promise<{ pin: string }> {
+async function resetPin(
+  sql: postgres.Sql,
+  siteId: string,
+  actor: Actor,
+  id: string,
+): Promise<{ pin: string }> {
   const pin = String(randomInt(1000, 10000));
   const pinHash = await hashSecret(pin);
   await sql.begin(async (tx) => {
@@ -697,25 +1075,98 @@ async function setActive(tx: Tx, siteId: string, actor: Actor, id: string, isAct
     await assertNotLastAdmin(tx, siteId, id);
   }
   await tx`update users set is_active = ${isActive}, updated_at = now() where id = ${id}`;
-  await track(tx, siteId, actor, isActive ? "user.reactivated" : "user.deactivated", "user", id, user, { isActive });
+  await track(
+    tx,
+    siteId,
+    actor,
+    isActive ? "user.reactivated" : "user.deactivated",
+    "user",
+    id,
+    user,
+    { isActive },
+  );
   return { id, isActive };
 }
 
-async function setRole(tx: Tx, siteId: string, actor: Actor, id: string, role: Role) {
-  const rows = await tx<{ role: Role }[]>`select role from users where id = ${id} and site_id = ${siteId}`;
+async function setRole(
+  sql: postgres.Sql,
+  siteId: string,
+  actor: Actor,
+  id: string,
+  input: { role: Role; email?: string | undefined; password?: string | undefined },
+): Promise<{ id: string; role: Role; pin?: string }> {
+  const rows = await sql<
+    { role: Role; email: string | null; password_hash: string | null; pin_hash: string | null }[]
+  >`
+    select role, email, password_hash, pin_hash from users where id = ${id} and site_id = ${siteId}
+  `;
   const user = rows[0];
   if (!user) {
     throw new DomainError("NOT_FOUND");
   }
-  if (user.role === "ADMIN" && role !== "ADMIN") {
-    await assertNotLastAdmin(tx, siteId, id);
+  if (user.role === "ADMIN" && input.role !== "ADMIN") {
+    await assertNotLastAdmin(sql, siteId, id);
   }
-  await tx`update users set role = ${role}::user_role, updated_at = now() where id = ${id}`;
-  await track(tx, siteId, actor, "user.role", "user", id, user, { role });
-  return { id, role };
+  if (input.email) {
+    await assertEmailFree(sql, siteId, input.email, id);
+  }
+  const nextEmail = input.email ?? user.email;
+  if (input.role === "ADMIN" && (!nextEmail || (!user.password_hash && !input.password))) {
+    throw new DomainError("INVALID_TRANSITION");
+  }
+  const pin = input.role !== "ADMIN" && !user.pin_hash ? String(randomInt(1000, 10000)) : undefined;
+  const pinHash = pin ? await hashSecret(pin) : null;
+  const passwordHash = input.password ? await hashSecret(input.password) : null;
+  await sql.begin(async (tx) => {
+    if (user.role === "ADMIN" && input.role !== "ADMIN") {
+      await assertNotLastAdmin(tx, siteId, id);
+    }
+    const updated = await tx<{ id: string }[]>`
+      update users set
+        role = ${input.role}::user_role,
+        email = coalesce(${input.email ?? null}, email),
+        password_hash = coalesce(${passwordHash}, password_hash),
+        pin_hash = coalesce(${pinHash}, pin_hash),
+        updated_at = now()
+      where id = ${id} and site_id = ${siteId}
+      returning id
+    `;
+    if (!updated[0]) {
+      throw new DomainError("NOT_FOUND");
+    }
+    await track(
+      tx,
+      siteId,
+      actor,
+      "user.role",
+      "user",
+      id,
+      { role: user.role },
+      { role: input.role },
+    );
+  });
+  return pin ? { id, role: input.role, pin } : { id, role: input.role };
 }
 
-async function assertNotLastAdmin(tx: Tx, siteId: string, id: string): Promise<void> {
+async function assertEmailFree(
+  sql: postgres.Sql | Tx,
+  siteId: string,
+  email: string,
+  exceptId: string,
+): Promise<void> {
+  const taken = await sql<{ id: string }[]>`
+    select id from users where site_id = ${siteId} and email = ${email} and id <> ${exceptId}
+  `;
+  if (taken[0]) {
+    throw new DomainError("EMAIL_TAKEN");
+  }
+}
+
+async function assertNotLastAdmin(
+  tx: postgres.Sql | Tx,
+  siteId: string,
+  id: string,
+): Promise<void> {
   const rows = await tx<{ count: number }[]>`
     select count(*)::int as count from users
     where site_id = ${siteId} and role = 'ADMIN' and is_active and id <> ${id}
@@ -738,7 +1189,9 @@ async function clock(tx: Tx, siteId: string, actor: Actor, now: Date, direction:
       insert into attendance (id, site_id, user_id, clock_in, source)
       values (${id}, ${siteId}, ${actor.id}, ${now.toISOString()}, 'SELF')
     `;
-    await track(tx, siteId, actor, "attendance.clock_in", "attendance", id, null, { clockIn: now.toISOString() });
+    await track(tx, siteId, actor, "attendance.clock_in", "attendance", id, null, {
+      clockIn: now.toISOString(),
+    });
     return { id };
   }
   const row = open[0];
@@ -746,7 +1199,9 @@ async function clock(tx: Tx, siteId: string, actor: Actor, now: Date, direction:
     throw new DomainError("INVALID_TRANSITION");
   }
   await tx`update attendance set clock_out = ${now.toISOString()} where id = ${row.id}`;
-  await track(tx, siteId, actor, "attendance.clock_out", "attendance", row.id, null, { clockOut: now.toISOString() });
+  await track(tx, siteId, actor, "attendance.clock_out", "attendance", row.id, null, {
+    clockOut: now.toISOString(),
+  });
   return { id: row.id };
 }
 
@@ -760,9 +1215,7 @@ async function listAttendance(
   if (actor.role !== "ADMIN" && filter.userId && filter.userId !== actor.id) {
     throw new DomainError("FORBIDDEN");
   }
-  const rows = await sql<
-    { user_id: string; day: string; minutes: number }[]
-  >`
+  const rows = await sql<{ user_id: string; day: string; minutes: number }[]>`
     select user_id, (clock_in at time zone 'Africa/Tunis')::date::text as day,
            coalesce(sum(extract(epoch from (clock_out - clock_in)) / 60), 0)::int as minutes
     from attendance
@@ -819,7 +1272,13 @@ async function putStaffShifts(
   siteId: string,
   actor: Actor,
   weekStart: string,
-  slots: { userId: string; workDate: string; startTime: string; endTime: string; note?: string | undefined }[],
+  slots: {
+    userId: string;
+    workDate: string;
+    startTime: string;
+    endTime: string;
+    note?: string | undefined;
+  }[],
 ) {
   const byUser = new Map<string, typeof slots>();
   for (const slot of slots) {
@@ -828,11 +1287,18 @@ async function putStaffShifts(
     byUser.set(slot.userId, list);
   }
   for (const list of byUser.values()) {
-    const ordered = [...list].sort((a, b) => `${a.workDate}${a.startTime}`.localeCompare(`${b.workDate}${b.startTime}`));
+    const ordered = [...list].sort((a, b) =>
+      `${a.workDate}${a.startTime}`.localeCompare(`${b.workDate}${b.startTime}`),
+    );
     for (let index = 1; index < ordered.length; index += 1) {
       const previous = ordered[index - 1];
       const current = ordered[index];
-      if (previous && current && previous.workDate === current.workDate && previous.endTime > current.startTime) {
+      if (
+        previous &&
+        current &&
+        previous.workDate === current.workDate &&
+        previous.endTime > current.startTime
+      ) {
         throw new DomainError("OVERLAP");
       }
     }
@@ -847,7 +1313,10 @@ async function putStaffShifts(
       values (${newId()}, ${siteId}, ${slot.userId}, ${slot.workDate}, ${slot.startTime}, ${slot.endTime}, ${slot.note ?? null})
     `;
   }
-  await track(tx, siteId, actor, "staff_shifts.replaced", "staff_shift", siteId, null, { weekStart, count: slots.length });
+  await track(tx, siteId, actor, "staff_shifts.replaced", "staff_shift", siteId, null, {
+    weekStart,
+    count: slots.length,
+  });
   return { weekStart, count: slots.length };
 }
 
@@ -881,7 +1350,14 @@ async function patchStockItem(
   siteId: string,
   actor: Actor,
   id: string,
-  patch: { code?: string | undefined; nameFr?: string | undefined; nameAr?: string | undefined; minThresholdBase?: number | undefined; supplierId?: string | undefined; isActive?: boolean | undefined },
+  patch: {
+    code?: string | undefined;
+    nameFr?: string | undefined;
+    nameAr?: string | undefined;
+    minThresholdBase?: number | undefined;
+    supplierId?: string | undefined;
+    isActive?: boolean | undefined;
+  },
 ) {
   const rows = await tx<{ id: string }[]>`
     update stock_items set
@@ -942,7 +1418,10 @@ async function manualMovement(
       ${input.note}, ${actor.id}
     )
   `;
-  await track(tx, siteId, actor, "stock.movement", "stock_item", input.stockItemId, item, { next, ...input });
+  await track(tx, siteId, actor, "stock.movement", "stock_item", input.stockItemId, item, {
+    next,
+    ...input,
+  });
   return { quantityBase: next };
 }
 
@@ -981,13 +1460,24 @@ async function takeInventory(
         )
       `;
     }
-    lines.push({ stockItemId: line.stockItemId, expectedBase: item.quantity_base, countedBase: line.countedBase, diffBase: diff, diffValueMillimes: value });
+    lines.push({
+      stockItemId: line.stockItemId,
+      expectedBase: item.quantity_base,
+      countedBase: line.countedBase,
+      diffBase: diff,
+      diffValueMillimes: value,
+    });
   }
   await track(tx, siteId, actor, "inventory.taken", "stock_inventory", id, null, { lines });
   return { id, lines };
 }
 
-async function insertSupplier(tx: Tx, siteId: string, actor: Actor, input: { id: string; name: string; phone?: string | undefined; note?: string | undefined }) {
+async function insertSupplier(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  input: { id: string; name: string; phone?: string | undefined; note?: string | undefined },
+) {
   await tx`
     insert into suppliers (id, site_id, name, phone, note)
     values (${input.id}, ${siteId}, ${input.name}, ${input.phone ?? null}, ${input.note ?? null})
@@ -1001,7 +1491,12 @@ async function patchSupplier(
   siteId: string,
   actor: Actor,
   id: string,
-  patch: { name?: string | undefined; phone?: string | undefined; note?: string | undefined; isActive?: boolean | undefined },
+  patch: {
+    name?: string | undefined;
+    phone?: string | undefined;
+    note?: string | undefined;
+    isActive?: boolean | undefined;
+  },
 ) {
   const rows = await tx<{ id: string }[]>`
     update suppliers set
@@ -1083,7 +1578,9 @@ async function patchPurchase(
 
 async function receivePurchase(tx: Tx, siteId: string, actor: Actor, id: string, now: Date) {
   await assertDraft(tx, siteId, id);
-  const lines = await tx<{ stock_item_id: string; quantity_base: number; total_cost_millimes: number }[]>`
+  const lines = await tx<
+    { stock_item_id: string; quantity_base: number; total_cost_millimes: number }[]
+  >`
     select stock_item_id, quantity_base, total_cost_millimes from purchase_lines where purchase_id = ${id}
   `;
   let total = 0;
@@ -1122,7 +1619,9 @@ async function receivePurchase(tx: Tx, siteId: string, actor: Actor, id: string,
 }
 
 async function cancelPurchase(tx: Tx, siteId: string, actor: Actor, id: string) {
-  const rows = await tx<{ status: string }[]>`select status from purchases where id = ${id} and site_id = ${siteId} for update`;
+  const rows = await tx<
+    { status: string }[]
+  >`select status from purchases where id = ${id} and site_id = ${siteId} for update`;
   const purchase = rows[0];
   if (!purchase) {
     throw new DomainError("NOT_FOUND");
@@ -1130,7 +1629,9 @@ async function cancelPurchase(tx: Tx, siteId: string, actor: Actor, id: string) 
   if (purchase.status !== "RECEIVED") {
     throw new DomainError("INVALID_TRANSITION");
   }
-  const lines = await tx<{ stock_item_id: string; quantity_base: number; total_cost_millimes: number }[]>`
+  const lines = await tx<
+    { stock_item_id: string; quantity_base: number; total_cost_millimes: number }[]
+  >`
     select stock_item_id, quantity_base, total_cost_millimes from purchase_lines where purchase_id = ${id}
   `;
   for (const line of lines) {
@@ -1146,7 +1647,11 @@ async function cancelPurchase(tx: Tx, siteId: string, actor: Actor, id: string) 
     const currentValueTimes1000 = BigInt(item.quantity_base) * BigInt(item.cost);
     const removedTimes1000 = BigInt(line.total_cost_millimes) * 1000n;
     const nextCost =
-      nextQty > 0 ? Number((currentValueTimes1000 - removedTimes1000 + BigInt(nextQty) / 2n) / BigInt(nextQty)) : item.cost;
+      nextQty > 0
+        ? Number(
+            (currentValueTimes1000 - removedTimes1000 + BigInt(nextQty) / 2n) / BigInt(nextQty),
+          )
+        : item.cost;
     await tx`
       update stock_items set quantity_base = ${nextQty}, avg_cost_millimes_per_1000_base = ${nextCost}
       where id = ${line.stock_item_id}
@@ -1159,7 +1664,9 @@ async function cancelPurchase(tx: Tx, siteId: string, actor: Actor, id: string) 
     `;
   }
   await tx`update purchases set status = 'CANCELLED' where id = ${id}`;
-  await track(tx, siteId, actor, "purchase.cancelled", "purchase", id, purchase, { status: "CANCELLED" });
+  await track(tx, siteId, actor, "purchase.cancelled", "purchase", id, purchase, {
+    status: "CANCELLED",
+  });
   return { id, status: "CANCELLED" };
 }
 
@@ -1175,7 +1682,9 @@ async function markPurchasePaid(tx: Tx, siteId: string, actor: Actor, id: string
 }
 
 async function assertDraft(tx: Tx, siteId: string, id: string): Promise<void> {
-  const rows = await tx<{ status: string }[]>`select status from purchases where id = ${id} and site_id = ${siteId}`;
+  const rows = await tx<
+    { status: string }[]
+  >`select status from purchases where id = ${id} and site_id = ${siteId}`;
   const purchase = rows[0];
   if (!purchase) {
     throw new DomainError("NOT_FOUND");
@@ -1218,7 +1727,13 @@ async function insertExpense(
   return input;
 }
 
-async function patchExpense(tx: Tx, siteId: string, actor: Actor, id: string, patch: { note?: string | undefined; isVoid?: boolean | undefined }) {
+async function patchExpense(
+  tx: Tx,
+  siteId: string,
+  actor: Actor,
+  id: string,
+  patch: { note?: string | undefined; isVoid?: boolean | undefined },
+) {
   const rows = await tx<{ id: string }[]>`
     update expenses set note = coalesce(${patch.note ?? null}, note), is_void = coalesce(${patch.isVoid ?? null}, is_void)
     where id = ${id} and site_id = ${siteId} returning id
@@ -1253,7 +1768,13 @@ async function openShift(
   await track(tx, siteId, actor, "shift.opened", "cash_shift", input.id, null, input);
   return {
     shift: input,
-    events: [{ name: "shift.opened", serverId: actor.id, payload: { id: input.id, deviceId: actor.deviceId, status: "OPEN", varianceMillimes: null } }],
+    events: [
+      {
+        name: "shift.opened",
+        serverId: actor.id,
+        payload: { id: input.id, deviceId: actor.deviceId, status: "OPEN", varianceMillimes: null },
+      },
+    ],
   };
 }
 
@@ -1262,7 +1783,12 @@ async function addCashMovement(
   siteId: string,
   actor: Actor,
   shiftId: string,
-  input: { type: "PAY_IN" | "PAY_OUT"; amountMillimes: number; reason: string; expenseId?: string | undefined },
+  input: {
+    type: "PAY_IN" | "PAY_OUT";
+    amountMillimes: number;
+    reason: string;
+    expenseId?: string | undefined;
+  },
 ) {
   const rows = await tx<{ status: string; site_id: string }[]>`
     select status, site_id from cash_shifts where id = ${shiftId} for update
@@ -1324,9 +1850,15 @@ async function closeShift(
   const thresholdRows = await tx<{ value: number }[]>`
     select value from settings where site_id = ${siteId} and key = 'cashVarianceAlertMillimes'
   `;
-  const threshold = typeof thresholdRows[0]?.value === "number" ? thresholdRows[0].value : fallback.cashVarianceAlertMillimes;
+  const threshold =
+    typeof thresholdRows[0]?.value === "number"
+      ? thresholdRows[0].value
+      : fallback.cashVarianceAlertMillimes;
   if (Math.abs(variance) > threshold) {
-    await track(tx, siteId, actor, "cash.variance", "cash_shift", id, null, { variance, threshold });
+    await track(tx, siteId, actor, "cash.variance", "cash_shift", id, null, {
+      variance,
+      threshold,
+    });
   }
   await track(tx, siteId, actor, "shift.closed", "cash_shift", id, null, { expected, variance });
   return {
@@ -1346,7 +1878,9 @@ async function noteShift(tx: Tx, siteId: string, actor: Actor, id: string, note:
   if (actor.role !== "ADMIN") {
     throw new DomainError("FORBIDDEN");
   }
-  const rows = await tx<{ status: string }[]>`select status from cash_shifts where id = ${id} and site_id = ${siteId}`;
+  const rows = await tx<
+    { status: string }[]
+  >`select status from cash_shifts where id = ${id} and site_id = ${siteId}`;
   if (!rows[0]) {
     throw new DomainError("NOT_FOUND");
   }
@@ -1368,7 +1902,13 @@ async function pay(
   now: Date,
 ) {
   const orders = await tx<
-    { status: string; total_millimes: number; table_id: string | null; server_id: string; version: number }[]
+    {
+      status: string;
+      total_millimes: number;
+      table_id: string | null;
+      server_id: string;
+      version: number;
+    }[]
   >`select status, total_millimes, table_id, server_id, version from orders where id = ${orderId} and site_id = ${siteId} for update`;
   const order = orders[0];
   if (!order) {
@@ -1389,6 +1929,12 @@ async function pay(
   if (unsent[0]) {
     throw new DomainError("INVALID_TRANSITION");
   }
+  const pendingCancel = await tx<{ id: string }[]>`
+    select id from cancellation_requests where order_id = ${orderId} and status = 'PENDING' limit 1
+  `;
+  if (pendingCancel[0]) {
+    throw new DomainError("CANCELLATION_EXISTS");
+  }
   if (input.method === "CASH") {
     if (input.tenderedMillimes === undefined || input.tenderedMillimes < order.total_millimes) {
       throw new DomainError("INVALID_TRANSITION");
@@ -1397,7 +1943,8 @@ async function pay(
   const settingsRows = await tx<{ value: boolean }[]>`
     select value from settings where site_id = ${siteId} and key = 'requireOpenShift'
   `;
-  const required = settingsRows[0]?.value === true || (settingsRows[0] === undefined && fallback.requireOpenShift);
+  const required =
+    settingsRows[0]?.value === true || (settingsRows[0] === undefined && fallback.requireOpenShift);
   let shiftId: string | null = null;
   if (actor.deviceId) {
     const shifts = await tx<{ id: string }[]>`
@@ -1408,7 +1955,8 @@ async function pay(
   if (required && !shiftId) {
     throw new DomainError("SHIFT_REQUIRED");
   }
-  const change = input.method === "CASH" ? (input.tenderedMillimes ?? 0) - order.total_millimes : null;
+  const change =
+    input.method === "CASH" ? (input.tenderedMillimes ?? 0) - order.total_millimes : null;
   const paymentId = newId();
   await tx`
     insert into payments (
@@ -1448,12 +1996,21 @@ async function pay(
       };
     }
   }
-  await track(tx, siteId, actor, "order.paid", "payment", paymentId, { status: order.status }, {
-    amountMillimes: order.total_millimes,
-    method: input.method,
-    changeMillimes: change,
-    notice: NOTICE,
-  });
+  await track(
+    tx,
+    siteId,
+    actor,
+    "order.paid",
+    "payment",
+    paymentId,
+    { status: order.status },
+    {
+      amountMillimes: order.total_millimes,
+      method: input.method,
+      changeMillimes: change,
+      notice: NOTICE,
+    },
+  );
   return {
     notice: NOTICE,
     payment: {
@@ -1464,14 +2021,27 @@ async function pay(
       changeMillimes: change,
     },
     events: [
-      { name: "order.paid", serverId: order.server_id, payload: { version: order.version + 1, orderId } },
-      { name: "order.updated", serverId: order.server_id, payload: { version: order.version + 1, orderId } },
+      {
+        name: "order.paid",
+        serverId: order.server_id,
+        payload: { version: order.version + 1, orderId },
+      },
+      {
+        name: "order.updated",
+        serverId: order.server_id,
+        payload: { version: order.version + 1, orderId },
+      },
       ...(tableEvent ? [tableEvent] : []),
     ],
   };
 }
 
-async function assertSameSite(tx: Tx, table: "stations" | "categories" | "products" | "printers" | "stock_items", id: string, siteId: string) {
+async function assertSameSite(
+  tx: Tx,
+  table: "stations" | "categories" | "products" | "printers" | "stock_items",
+  id: string,
+  siteId: string,
+) {
   const rows =
     table === "stations"
       ? await tx<{ site_id: string }[]>`select site_id from stations where id = ${id}`

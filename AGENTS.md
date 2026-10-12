@@ -38,7 +38,7 @@ The hub is the source of truth. Devices use HTTPS and Socket.IO. The service mus
 | `order.view.own`                                                                     | yes    | yes                         | yes   |
 | `order.view.all`                                                                     | no     | yes                         | yes   |
 | `cancellation.request`                                                               | yes    | yes                         | yes   |
-| `cancellation.approve`                                                               | no     | only with an admin override | yes   |
+| `cancellation.approve`                                                               | no     | yes                         | yes   |
 | `order.reprint`                                                                      | no     | yes                         | yes   |
 | `payment.create`                                                                     | no     | yes                         | yes   |
 | `shift.manage`                                                                       | no     | yes                         | yes   |
@@ -48,7 +48,7 @@ The hub is the source of truth. Devices use HTTPS and Socket.IO. The service mus
 | `staff.manage`, `attendance.manage`, `printer.manage`, `settings.edit`               | no     | no                          | yes   |
 | `device.manage`, `audit.view`, `report.view`                                         | no     | no                          | yes   |
 
-Cashier override: `can('CASHIER', 'cancellation.approve')` and `can('CASHIER', 'order.discount')` are false. `requiresAdminOverride` is true for those two. The cashier submits an admin PIN or password. Audit the action with both identities. `order.discount` is the discount permission.
+Cashier override: `can('CASHIER', 'order.discount')` is false. `requiresAdminOverride` is true for that permission. The cashier submits an admin PIN or password. Audit the action with both identities. `order.discount` is the discount permission. The cashier approves a cancellation alone; the waiter waits for that decision.
 
 ## Scope of this foundation
 

@@ -1,5 +1,6 @@
 import {
   businessDate,
+  DAILY_CATEGORY_ID,
   newId,
   ticketPayloadSchema,
   type CancellationStatus,
@@ -127,6 +128,15 @@ interface RequestedLine {
   note?: string | undefined;
 }
 
+export interface DailyOfferView {
+  id: string;
+  productId: string;
+  nameFr: string;
+  nameAr: string;
+  priceMillimes: number;
+  fromCatalog: boolean;
+}
+
 export interface OrderingStore {
   catalog(): Promise<unknown>;
   tables(actor: Actor): Promise<unknown>;
@@ -173,6 +183,11 @@ export interface OrderingStore {
   ): Promise<OrderMutation>;
   listCancellations(status: CancellationStatus): Promise<unknown>;
   requestBill(actor: Actor, orderId: string): Promise<OrderMutation>;
+  dailySpecials(now: Date): Promise<{
+    businessDate: string;
+    productIds: string[];
+    offers: DailyOfferView[];
+  }>;
 }
 
 export function createOrderingStore(
@@ -206,6 +221,7 @@ export function createOrderingStore(
       ),
     listCancellations: (status) => listCancellations(sql, options.siteId, status),
     requestBill: (actor, orderId) => mutate(sql, (tx) => requestBill(tx, options.siteId, actor, orderId)),
+    dailySpecials: (now) => listDailySpecials(sql, options, now),
   };
 }
 
@@ -546,7 +562,7 @@ async function decideCancellation(
     throw new DomainError("NOT_FOUND");
   }
   const header = await lockHeader(tx, siteId, request.order_id, actor);
-  if (request.status !== "PENDING" || header.status === "PAID") {
+  if (request.status !== "PENDING") {
     throw new DomainError("INVALID_TRANSITION");
   }
   const decidedAt = now.toISOString();
@@ -630,6 +646,37 @@ async function decideCancellation(
     set status = 'APPROVED', decided_by = ${actor.id}, decided_at = ${decidedAt}, override_by = ${overrideBy}
     where id = ${cancellationId}
   `;
+  if (header.status === "PAID") {
+    const refreshed = await readItems(tx, header.id);
+    const total = activeTotal(refreshed);
+    await tx`
+      update orders
+      set total_millimes = ${total}, version = version + 1, updated_at = now()
+      where id = ${header.id}
+    `;
+    const paid = await readOrder(tx, header.id);
+    const paidPayload = cancellationPayload(
+      paid,
+      request.id,
+      request.order_item_id,
+      "APPROVED",
+      request.reason,
+    );
+    await track(tx, siteId, actor, "cancellation.decided", "cancellation_request", request.id, null, {
+      decidedBy: actor.id,
+      overrideBy,
+      orderId: paid.id,
+      status: paid.status,
+    });
+    return {
+      order: paid,
+      created: false,
+      events: [
+        { name: "cancellation.decided", serverId: paid.serverId, payload: paidPayload },
+        orderEvent("order.updated", paid),
+      ],
+    };
+  }
   const order = await persistTotals(tx, header, now);
   const events: RealtimeMessage[] = [];
   if (order.status === "CANCELLED" && header.tableId) {
@@ -984,10 +1031,11 @@ async function catalog(sql: postgres.Sql, siteId: string) {
       price_millimes: number;
       vat_rate_bp: number;
       is_available: boolean;
+      image_type: string | null;
       sort_order: number;
     }[]
   >`
-    select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, is_available, sort_order
+    select id, category_id, name_fr, name_ar, price_millimes, vat_rate_bp, is_available, image_type, sort_order
     from products
     where site_id = ${siteId} and is_active = true
     order by sort_order, name_fr
@@ -1008,9 +1056,57 @@ async function catalog(sql: postgres.Sql, siteId: string) {
           priceMillimes: product.price_millimes,
           vatRateBp: product.vat_rate_bp,
           isAvailable: product.is_available,
+          imageUrl: product.image_type ? `/product-images/${product.id}` : null,
         })),
     })),
   };
+}
+
+async function listDailySpecials(
+  sql: postgres.Sql,
+  options: { siteId: string; cutoffHour: number },
+  now: Date,
+): Promise<{ businessDate: string; productIds: string[]; offers: DailyOfferView[] }> {
+  const cutoffRows = await sql<{ value: number }[]>`
+    select value from settings where site_id = ${options.siteId} and key = 'businessDayCutoffHour'
+  `;
+  const cutoff = typeof cutoffRows[0]?.value === "number" ? cutoffRows[0].value : options.cutoffHour;
+  const today = businessDate(now, cutoff);
+  const rows = await sql<{ value: { businessDate?: unknown; productIds?: unknown } }[]>`
+    select value from settings where site_id = ${options.siteId} and key = 'dailySpecials'
+  `;
+  const stored = rows[0]?.value;
+  const savedDate = typeof stored?.businessDate === "string" ? stored.businessDate : "";
+  const productIds =
+    savedDate === today && Array.isArray(stored?.productIds)
+      ? stored.productIds.filter((id): id is string => typeof id === "string")
+      : [];
+  if (productIds.length === 0) {
+    return { businessDate: today, productIds: [], offers: [] };
+  }
+  const products = await sql<
+    { id: string; category_id: string; name_fr: string; name_ar: string; price_millimes: number; is_active: boolean }[]
+  >`
+    select id, category_id, name_fr, name_ar, price_millimes, is_active
+    from products where site_id = ${options.siteId} and id in ${sql(productIds)}
+  `;
+  const offers = productIds.flatMap((id) => {
+    const product = products.find((row) => row.id === id && row.is_active);
+    if (!product) {
+      return [];
+    }
+    return [
+      {
+        id: product.id,
+        productId: product.id,
+        nameFr: product.name_fr,
+        nameAr: product.name_ar,
+        priceMillimes: product.price_millimes,
+        fromCatalog: product.category_id !== DAILY_CATEGORY_ID,
+      },
+    ];
+  });
+  return { businessDate: today, productIds: offers.map((offer) => offer.productId), offers };
 }
 
 async function listTables(sql: postgres.Sql, siteId: string, actor: Actor) {
@@ -1163,11 +1259,18 @@ async function listCancellations(sql: postgres.Sql, siteId: string, status: Canc
       requested_by: string;
       reason: string;
       status: CancellationStatus;
+      table_label: string | null;
+      product_name: string | null;
+      server_name: string;
     }[]
   >`
-    select c.id, c.order_id, c.order_item_id, c.requested_by, c.reason, c.status
+    select c.id, c.order_id, c.order_item_id, c.requested_by, c.reason, c.status,
+      t.label as table_label, i.product_name_snapshot as product_name, u.display_name as server_name
     from cancellation_requests c
     join orders o on o.id = c.order_id
+    join users u on u.id = c.requested_by
+    left join floor_tables t on t.id = o.table_id
+    left join order_items i on i.id = c.order_item_id
     where o.site_id = ${siteId} and c.status = ${status}::cancellation_status
     order by c.created_at
   `;
@@ -1179,6 +1282,9 @@ async function listCancellations(sql: postgres.Sql, siteId: string, status: Canc
       requestedBy: row.requested_by,
       reason: row.reason,
       status: row.status,
+      tableLabel: row.table_label ?? "",
+      productName: row.product_name ?? "",
+      serverName: row.server_name,
     })),
   };
 }

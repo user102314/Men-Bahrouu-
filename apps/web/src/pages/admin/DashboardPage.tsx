@@ -82,7 +82,7 @@ export function DashboardPage() {
         </span>
       </div>
       {report ? (
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             label={t("admin.revenue")}
             value={<Money millimes={report.revenueMillimes} locale={locale} />}

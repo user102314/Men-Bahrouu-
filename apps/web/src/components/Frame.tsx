@@ -35,41 +35,43 @@ export function Frame() {
 
   return (
     <div className="min-h-screen">
-      <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-3">
-        <p className="font-display text-2xl">Men Bahrouu</p>
-        <p
-          className="ms-auto inline-flex min-h-12 items-center gap-2 rounded-[12px] border border-line px-3"
-          role="status"
-          aria-live="polite"
-        >
-          {link === "connected" ? <Wifi aria-hidden /> : <WifiOff aria-hidden />}
-          {t(`link.${link}`)}
-        </p>
-        <Button aria-label={t("common.language")} onClick={() => toggleLanguage()}>
-          <Languages aria-hidden />
-          {t("common.language")}
-        </Button>
-        <Button aria-label={dark ? t("common.themeLight") : t("common.themeDark")} onClick={toggleTheme}>
-          {dark ? <Sun aria-hidden /> : <Moon aria-hidden />}
-        </Button>
-        {session ? (
-          <Button
-            onClick={() => {
-              void api.logout().catch(() => undefined);
-              clearSession();
-            }}
+      <header className="no-print flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2 sm:px-4 sm:py-3">
+        <p className="me-auto font-display text-xl sm:text-2xl">Men Bahrouu</p>
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+          <p
+            className="inline-flex min-h-11 items-center gap-2 rounded-[12px] border border-line px-3 text-sm"
+            role="status"
+            aria-live="polite"
           >
-            <LogOut aria-hidden />
-            {t("common.logout")}
+            {link === "connected" ? <Wifi aria-hidden /> : <WifiOff aria-hidden />}
+            <span className="max-w-36 truncate sm:max-w-none">{t(`link.${link}`)}</span>
+          </p>
+          <Button aria-label={t("common.language")} onClick={() => toggleLanguage()}>
+            <Languages aria-hidden />
+            <span className="hidden sm:inline">{t("common.language")}</span>
           </Button>
-        ) : null}
+          <Button aria-label={dark ? t("common.themeLight") : t("common.themeDark")} onClick={toggleTheme}>
+            {dark ? <Sun aria-hidden /> : <Moon aria-hidden />}
+          </Button>
+          {session ? (
+            <Button
+              onClick={() => {
+                void api.logout().catch(() => undefined);
+                clearSession();
+              }}
+            >
+              <LogOut aria-hidden />
+              <span className="hidden sm:inline">{t("common.logout")}</span>
+            </Button>
+          ) : null}
+        </div>
       </header>
       {link === "unreachable" ? (
-        <p className="bg-terracotta px-4 py-3 text-white" role="alert">
+        <p className="no-print bg-terracotta px-4 py-3 text-white" role="alert">
           {t("banner.unreachable")}
         </p>
       ) : null}
-      <main className="p-4">
+      <main className="p-3 sm:p-4">
         <Outlet />
       </main>
     </div>

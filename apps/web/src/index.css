@@ -3,27 +3,27 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --fond: #f6efe4;
-  --surface: #fbf8f2;
-  --ink: #1b2430;
-  --primary: #1d4e89;
-  --accent: #e3a72f;
-  --terracotta: #c8452d;
-  --olive: #4f7a3a;
-  --line: #e4d9c7;
-  --bar: #1f7a8c;
+  --fond: #e7f2fb;
+  --surface: #f5faff;
+  --ink: #0c2744;
+  --primary: #0f5fa8;
+  --accent: #3b93d6;
+  --terracotta: #c4473a;
+  --olive: #1c7c74;
+  --line: #c5d8ec;
+  --bar: #1a7f9c;
   color-scheme: light;
 }
 
 .dark {
-  --fond: #0f1a2a;
-  --surface: #16243a;
-  --ink: #eaf0f8;
-  --primary: #5b9be0;
-  --accent: #f0b84a;
-  --terracotta: #e0674e;
-  --olive: #7fb069;
-  --line: #24364f;
+  --fond: #071422;
+  --surface: #0e2238;
+  --ink: #e7f1fb;
+  --primary: #5aa6e6;
+  --accent: #8ec4f0;
+  --terracotta: #e07a64;
+  --olive: #6ec4b0;
+  --line: #1d3a58;
   color-scheme: dark;
 }
 
@@ -48,10 +48,12 @@ html,
 body,
 #root {
   min-height: 100%;
+  max-width: 100%;
 }
 
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--fond);
   color: var(--ink);
   font-family: var(--font-sans);
@@ -88,4 +90,129 @@ h2,
 
 .shake {
   animation: shake 0.35s ease;
+}
+
+.daily-menu-sheet {
+  max-width: 42rem;
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid #e3d7c6;
+  border-radius: 18px;
+  background: #fffdf8;
+  color: #1e2a3d;
+  box-shadow: 0 16px 40px rgba(18, 53, 111, 0.08);
+}
+
+.daily-menu-sheet header {
+  padding: 1.4rem 1rem 1.2rem;
+  background: linear-gradient(180deg, #1a4f9c 0%, #12356f 100%);
+  color: white;
+  text-align: center;
+}
+
+.daily-menu-sheet header img {
+  height: 7.5rem;
+  width: auto;
+  margin-inline: auto;
+}
+
+.daily-menu-sheet .menu-kicker {
+  margin: 0.35rem 0 0;
+  color: #f3c27a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.daily-menu-sheet h2 {
+  margin: 0.15rem 0 0;
+  color: white;
+  font-family: Fraunces, Georgia, serif;
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+}
+
+.daily-menu-sheet .menu-date {
+  margin: 0.25rem 0 0;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.daily-menu-sheet .menu-empty {
+  margin: 0;
+  padding: 1.25rem 1.5rem 0;
+  text-align: center;
+}
+
+.daily-menu-sheet ul {
+  margin: 0;
+  padding: 0.4rem 1.25rem 1.4rem;
+  list-style: none;
+}
+
+.daily-menu-sheet li {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px dashed #e3d7c6;
+}
+
+.daily-menu-sheet .dish-photo,
+.daily-menu-sheet .dish-mark {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 12px;
+}
+
+.daily-menu-sheet .dish-photo {
+  object-fit: cover;
+}
+
+.daily-menu-sheet .dish-mark {
+  background: radial-gradient(circle at 40% 35%, #f3c27a, #1a4f9c 70%);
+}
+
+.daily-menu-sheet .dish-fr {
+  margin: 0;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.daily-menu-sheet .dish-ar {
+  margin: 0.1rem 0 0;
+  font-family: Cairo, sans-serif;
+  font-size: 1.05rem;
+}
+
+.daily-menu-sheet .dish-price {
+  margin: 0;
+  color: #1a4f9c;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .daily-menu-sheet {
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }

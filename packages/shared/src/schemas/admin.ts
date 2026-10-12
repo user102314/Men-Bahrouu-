@@ -93,7 +93,9 @@ export const settingsPutSchema = z
     cashVarianceAlertMillimes: millimesSchema.optional(),
     priceCeilingMillimes: positiveMillimesSchema.optional(),
   })
-  .refine((value) => Object.keys(value).length > 0, { message: "At least one setting is required" });
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one setting is required",
+  });
 
 export const createUserSchema = z.strictObject({
   id: uuidSchema,
@@ -106,7 +108,11 @@ export const updateUserSchema = z.strictObject({
   displayName: z.string().trim().min(1).max(60).optional(),
   email: z.email().optional(),
 });
-export const changeRoleSchema = z.strictObject({ role: roleSchema });
+export const changeRoleSchema = z.strictObject({
+  role: roleSchema,
+  email: z.email().optional(),
+  password: z.string().min(8).optional(),
+});
 
 export const attendanceRangeSchema = z.strictObject({
   from: z.iso.date().optional(),
@@ -141,9 +147,12 @@ export const createStockItemSchema = z.strictObject({
   minThresholdBase: z.number().int().nonnegative(),
   supplierId: uuidSchema.optional(),
 });
-export const updateStockItemSchema = createStockItemSchema.omit({ id: true, baseUnit: true }).partial().extend({
-  isActive: z.boolean().optional(),
-});
+export const updateStockItemSchema = createStockItemSchema
+  .omit({ id: true, baseUnit: true })
+  .partial()
+  .extend({
+    isActive: z.boolean().optional(),
+  });
 export const recipeSchema = z.strictObject({
   ingredients: z.array(
     z.strictObject({
@@ -154,7 +163,10 @@ export const recipeSchema = z.strictObject({
 });
 export const manualMovementSchema = z.strictObject({
   stockItemId: uuidSchema,
-  deltaBase: z.number().int().refine((value) => value !== 0, { message: "Delta must not be zero" }),
+  deltaBase: z
+    .number()
+    .int()
+    .refine((value) => value !== 0, { message: "Delta must not be zero" }),
   reason: z.enum(["WASTE", "CORRECTION"]),
   note: z.string().trim().min(3).max(200),
 });

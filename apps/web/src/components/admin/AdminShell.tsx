@@ -61,28 +61,28 @@ export function AdminShell() {
   const [more, setMore] = useState(false);
   return (
     <div className="flex min-h-[calc(100vh-4.5rem)]">
-      <aside className="hidden w-64 shrink-0 overflow-y-auto border-e border-line bg-surface p-3 md:block">
+      <aside className="no-print hidden w-64 shrink-0 overflow-y-auto border-e border-line bg-surface p-3 md:block">
         <ItemList />
       </aside>
-      <main className="min-w-0 flex-1 p-4 pb-24 md:pb-6">
+      <main className="min-w-0 flex-1 p-1 pb-28 sm:p-2 md:p-4 md:pb-6">
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-surface md:hidden">
-        <NavLink to="/admin" end className="flex min-h-14 items-center justify-center">
+      <nav className="no-print fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+        <NavLink to="/admin" end className="flex min-h-14 items-center justify-center px-1 text-center text-xs leading-tight">
           {t("admin.dashboard")}
         </NavLink>
-        <NavLink to="/admin/orders" className="flex min-h-14 items-center justify-center">
+        <NavLink to="/admin/orders" className="flex min-h-14 items-center justify-center px-1 text-center text-xs leading-tight">
           {t("admin.orders")}
         </NavLink>
-        <NavLink to="/admin/alerts" className="flex min-h-14 items-center justify-center">
+        <NavLink to="/admin/alerts" className="flex min-h-14 items-center justify-center px-1 text-center text-xs leading-tight">
           {t("admin.alerts")}
         </NavLink>
-        <button type="button" className="min-h-14" onClick={() => setMore(true)}>
+        <button type="button" className="min-h-14 px-1 text-xs leading-tight" onClick={() => setMore(true)}>
           {t("admin.more")}
         </button>
       </nav>
       {more ? (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-fond p-4 md:hidden">
+        <div className="no-print fixed inset-0 z-40 overflow-y-auto bg-fond p-4 md:hidden">
           <button type="button" className="mb-4 min-h-12" onClick={() => setMore(false)}>
             {t("common.close")}
           </button>
